@@ -7,23 +7,21 @@ defmodule Muex.Sandbox do
   allows multiple `mix test` processes to run simultaneously without
   seeing each other's mutations.
 
-  ## Structure
+  Supports both standard Mix projects and umbrella projects. For umbrellas,
+  the `apps/` directory is mirrored (not `lib/`), and only the specific app
+  being mutated has its `_build` artifacts deep-copied.
 
-  A sandbox at `/tmp/muex_sandbox_<id>` looks like:
+  ## Structure (umbrella)
 
       sandbox/
       ├── mix.exs          → symlink to project
       ├── mix.lock         → symlink to project
-      ├── config/          → symlink to project (if exists)
+      ├── config/          → symlink to project
       ├── deps/            → symlink to project
-      ├── test/            → symlink to project (or configured test dirs)
-      ├── _build/          → deep copy of project _build (for this env)
-      └── lib/             → directory of symlinks, except:
-          └── mutated.ex   → real file with mutated source
-
-  The `_build` directory is copied so each sandbox has its own compilation
-  cache. Only the `_build/<env>/lib/<app>` subtree is copied; dep builds
-  are symlinked.
+      ├── apps/            → mirrored directory of symlinks
+      │   └── my_app/lib/  → directory of symlinks, except:
+      │       └── mutated.ex → real file with mutated source
+      └── _build/          → symlinks + deep copy of mutated app
   """
 
   @type sandbox :: %{
@@ -62,17 +60,25 @@ defmodule Muex.Sandbox do
     # Symlink top-level files
     symlink_top_level(root, project_root)
 
-    # Create lib/ as a directory of symlinks (not a single symlink)
-    # so we can replace individual files with mutated copies
-    mirror_source_tree(root, project_root, "lib")
+    umbrella? = File.dir?(Path.join(project_root, "apps"))
 
-    # Symlink test directories
+    if umbrella? do
+      # Mirror apps/ as a directory tree of symlinks so individual
+      # source files can be replaced with mutated copies.
+      mirror_source_tree(root, project_root, "apps")
+    else
+      mirror_source_tree(root, project_root, "lib")
+    end
+
+    # Symlink test directories (for explicit --test-paths)
     link_test_paths(root, project_root, test_paths)
 
     # Symlink deps/ (shared, read-only)
     safe_symlink(Path.join(project_root, "deps"), Path.join(root, "deps"))
 
-    # Copy _build for this app only; symlink dep builds
+    # Setup _build: symlink everything, deep copy nothing initially.
+    # apply_mutation/4 handles deep-copying the specific app's build
+    # artifacts on demand.
     setup_build_dir(root, project_root, build_env)
 
     %{root: root, project_root: project_root, build_env: build_env}
@@ -87,15 +93,19 @@ defmodule Muex.Sandbox do
   """
   @spec apply_mutation(sandbox(), Path.t(), String.t(), atom() | nil) :: :ok | {:error, term()}
   def apply_mutation(sandbox, original_path, mutated_source, module_name) do
-    # original_path is relative to project root (e.g. "lib/muex/compiler.ex")
     sandbox_path = Path.join(sandbox.root, original_path)
+
+    # Ensure the mutated app's build dir is a real copy (not a symlink)
+    # so this sandbox can recompile independently.
+    ensure_build_copy_for_file(sandbox, original_path)
 
     # Remove the symlink and write the mutated source as a real file
     File.rm(sandbox_path)
 
     case File.write(sandbox_path, mutated_source) do
       :ok ->
-        # Delete beam file to force recompilation of this module only
+        # Delete beam file to force recompilation of this module only.
+        # Elixir module atoms stringify with "Elixir." prefix automatically.
         if module_name do
           beam_pattern = Path.join([sandbox.root, "_build", "**", "#{module_name}.beam"])
           Path.wildcard(beam_pattern) |> Enum.each(&File.rm/1)
@@ -131,7 +141,6 @@ defmodule Muex.Sandbox do
   def cleanup(sandboxes) do
     case sandboxes do
       [%{root: first_root} | _] ->
-        # All sandboxes share a parent directory
         base_dir = Path.dirname(first_root)
         File.rm_rf!(base_dir)
 
@@ -145,7 +154,6 @@ defmodule Muex.Sandbox do
   # -- Private helpers --
 
   defp symlink_top_level(root, project_root) do
-    # Files that mix test needs at the project root
     top_level_files = ~w(mix.exs mix.lock .formatter.exs .credo.exs)
 
     for file <- top_level_files do
@@ -156,7 +164,6 @@ defmodule Muex.Sandbox do
       end
     end
 
-    # Directories that can be shared read-only
     top_level_dirs = ~w(config priv)
 
     for dir <- top_level_dirs do
@@ -173,8 +180,6 @@ defmodule Muex.Sandbox do
     target_dir = Path.join(root, dir)
 
     if File.dir?(source_dir) do
-      # Walk the source tree and create matching directory structure
-      # with symlinks for files
       source_dir
       |> Path.join("**")
       |> Path.wildcard(match_dot: true)
@@ -190,7 +195,6 @@ defmodule Muex.Sandbox do
         end
       end)
 
-      # Ensure the dir itself exists even if empty
       File.mkdir_p!(target_dir)
     end
   end
@@ -200,13 +204,32 @@ defmodule Muex.Sandbox do
       source = Path.join(project_root, test_path)
       target = Path.join(root, test_path)
 
-      if File.dir?(source) do
-        File.mkdir_p!(Path.dirname(target))
-        safe_symlink(source, target)
+      cond do
+        File.dir?(source) ->
+          File.mkdir_p!(Path.dirname(target))
+          # Only symlink if not already mirrored (e.g. apps/supply_chain/test
+          # would already exist from mirror_source_tree on apps/)
+          unless File.exists?(target) do
+            safe_symlink(source, target)
+          end
+
+        File.regular?(source) ->
+          # Individual test file — ensure parent dir exists
+          File.mkdir_p!(Path.dirname(target))
+
+          unless File.exists?(target) do
+            safe_symlink(source, target)
+          end
+
+        true ->
+          :ok
       end
     end
   end
 
+  # Symlink the entire _build tree initially. When apply_mutation is called,
+  # ensure_build_copy_for_file/2 replaces the specific app's symlink with a
+  # real copy so that sandbox can recompile independently.
   defp setup_build_dir(root, project_root, build_env) do
     source_build = Path.join([project_root, "_build", build_env])
     target_build = Path.join([root, "_build", build_env])
@@ -214,71 +237,68 @@ defmodule Muex.Sandbox do
     if File.dir?(source_build) do
       File.mkdir_p!(target_build)
 
-      # The build dir contains lib/<app_name>/ for each compiled app.
-      # Symlink all dep app dirs, but deep-copy the project's own app dir
-      # so each sandbox has independent compilation state.
       source_lib = Path.join(source_build, "lib")
       target_lib = Path.join(target_build, "lib")
 
       if File.dir?(source_lib) do
         File.mkdir_p!(target_lib)
 
-        # Determine the project app name from mix.exs
-        app_name = detect_app_name(project_root)
-
+        # Symlink ALL app build dirs initially. Deep copies happen lazily
+        # in ensure_build_copy_for_file/2 for the mutated app only.
         source_lib
         |> File.ls!()
         |> Enum.each(fn entry ->
           source_entry = Path.join(source_lib, entry)
           target_entry = Path.join(target_lib, entry)
-
-          if entry == app_name do
-            # Deep copy the project's own build artifacts
-            deep_copy(source_entry, target_entry)
-          else
-            # Symlink dependency build artifacts
-            safe_symlink(source_entry, target_entry)
-          end
+          safe_symlink(source_entry, target_entry)
         end)
       end
     else
-      # No build dir yet — the first mix test will create it
       File.mkdir_p!(Path.join([root, "_build", build_env, "lib"]))
     end
   end
 
-  defp detect_app_name(project_root) do
-    mix_exs = Path.join(project_root, "mix.exs")
+  # Given a file path like "apps/supply_chain/lib/foo.ex", extract the app
+  # name ("supply_chain") and ensure its _build/test/lib/<app> directory
+  # is a real deep copy (not a symlink) so we can delete its beam files.
+  defp ensure_build_copy_for_file(sandbox, file_path) do
+    app_name = extract_app_name_from_path(file_path)
+    if app_name, do: ensure_build_copy(sandbox, app_name)
+  end
 
-    if File.exists?(mix_exs) do
-      case File.read!(mix_exs) |> Code.string_to_quoted() do
-        {:ok, ast} ->
-          extract_app_from_mix_ast(ast) || "unknown"
-
-        _ ->
-          "unknown"
-      end
-    else
-      "unknown"
+  defp extract_app_name_from_path(file_path) do
+    case Path.split(file_path) do
+      # apps/<app_name>/lib/...
+      ["apps", app_name | _] -> app_name
+      # lib/... (non-umbrella)
+      ["lib" | _] -> detect_app_from_build()
+      _ -> nil
     end
   end
 
-  defp extract_app_from_mix_ast(ast) do
-    {_, app} =
-      Macro.prewalk(ast, nil, fn
-        # Match `app: :name` in keyword list
-        {:app, name}, _acc when is_atom(name) ->
-          {{:app, name}, Atom.to_string(name)}
+  defp detect_app_from_build do
+    # For non-umbrella projects, find the app name from _build
+    case Path.wildcard("_build/test/lib/*/.mix/compile.elixir") do
+      [path | _] -> path |> Path.split() |> Enum.at(3)
+      [] -> nil
+    end
+  end
 
-        # Match `@app :name` module attribute
-        {:@, _, [{:app, _, [name]}]}, _acc when is_atom(name) ->
-          {{:@, [], [{:app, [], [name]}]}, Atom.to_string(name)}
+  defp ensure_build_copy(sandbox, app_name) do
+    target_app_build = Path.join([sandbox.root, "_build", sandbox.build_env, "lib", app_name])
+    source_app_build = Path.join([sandbox.project_root, "_build", sandbox.build_env, "lib", app_name])
 
-        node, acc ->
-          {node, acc}
-      end)
+    # If it's a symlink, replace with a deep copy
+    case File.read_link(target_app_build) do
+      {:ok, _} ->
+        # It's a symlink — replace with a real copy
+        File.rm!(target_app_build)
+        deep_copy(source_app_build, target_app_build)
 
-    app
+      {:error, _} ->
+        # Already a real directory (from a previous mutation on same app)
+        :ok
+    end
   end
 
   defp deep_copy(source, target) do
@@ -296,7 +316,6 @@ defmodule Muex.Sandbox do
   end
 
   defp safe_symlink(source, target) do
-    # Remove existing target if any (stale symlink, etc.)
     File.rm(target)
     File.ln_s!(source, target)
   end
