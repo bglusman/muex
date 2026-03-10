@@ -1,40 +1,5 @@
 defmodule Muex.Config do
-  @moduledoc """
-  Central configuration for Muex mutation testing runs.
-
-  Parses command-line arguments into a normalized struct consumed by the
-  pipeline. Supports umbrella apps (`--app`), explicit test paths
-  (`--test-paths`), and all existing flags.
-
-  ## Options
-
-    * `--files` / `--path` - Source directory, file, or glob pattern (default: `"lib"`)
-    * `--test-paths` - Comma-separated list of test directories, files, or glob
-      patterns (default: `"test"`). Each entry is resolved independently: a
-      directory is expanded to `dir/**/*_test.exs`, a glob is used as-is, and a
-      regular file is taken literally.
-    * `--app` - Target a single OTP application inside an umbrella project.
-      Sets `--files` to `apps/<app>/lib` and `--test-paths` to
-      `apps/<app>/test` unless those flags are provided explicitly.
-    * `--language` - Language adapter: `elixir` or `erlang` (default: `elixir`)
-    * `--mutators` - Comma-separated list of mutator names (default: all)
-    * `--mutator-paths` - Comma-separated directories containing custom mutator
-      modules implementing `Muex.Mutator` behaviour. Files are compiled and
-      loaded at runtime.
-    * `--concurrency` - Number of parallel workers (default: number of schedulers)
-    * `--timeout` - Test timeout in milliseconds (default: 5000)
-    * `--fail-at` - Minimum mutation score percentage to pass (default: 100)
-    * `--format` - Output format: `terminal`, `json`, `html` (default: `terminal`)
-    * `--min-score` - Minimum file complexity score for inclusion (default: 20)
-    * `--max-mutations` - Cap total mutations tested; 0 = unlimited (default: 0)
-    * `--no-filter` - Disable intelligent file filtering
-    * `--verbose` - Show detailed progress information
-    * `--optimize` / `--no-optimize` - Enable/disable mutation optimization (default: enabled)
-    * `--optimize-level` - Preset: `conservative`, `balanced`, `aggressive` (default: `balanced`)
-    * `--min-complexity` - Override minimum complexity for optimizer
-    * `--max-per-function` - Override maximum mutations per function for optimizer
-  """
-
+  @moduledoc "Central configuration for Muex mutation testing runs.\n\nParses command-line arguments into a normalized struct consumed by the\npipeline. Supports umbrella apps (`--app`), explicit test paths\n(`--test-paths`), and all existing flags.\n\n## Options\n\n  * `--files` / `--path` - Source directory, file, or glob pattern (default: `\"lib\"`)\n  * `--test-paths` - Comma-separated list of test directories, files, or glob\n    patterns (default: `\"test\"`). Each entry is resolved independently: a\n    directory is expanded to `dir/**/*_test.exs`, a glob is used as-is, and a\n    regular file is taken literally.\n  * `--app` - Target a single OTP application inside an umbrella project.\n    Sets `--files` to `apps/<app>/lib` and `--test-paths` to\n    `apps/<app>/test` unless those flags are provided explicitly.\n  * `--language` - Language adapter: `elixir` or `erlang` (default: `elixir`)\n  * `--mutators` - Comma-separated list of mutator names (default: all)\n  * `--mutator-paths` - Comma-separated directories containing custom mutator\n    modules implementing `Muex.Mutator` behaviour. Files are compiled and\n    loaded at runtime.\n  * `--concurrency` - Number of parallel workers (default: number of schedulers)\n  * `--timeout` - Test timeout in milliseconds (default: 5000)\n  * `--fail-at` - Minimum mutation score percentage to pass (default: 100)\n  * `--format` - Output format: `terminal`, `json`, `html` (default: `terminal`)\n  * `--min-score` - Minimum file complexity score for inclusion (default: 20)\n  * `--max-mutations` - Cap total mutations tested; 0 = unlimited (default: 0)\n  * `--no-filter` - Disable intelligent file filtering\n  * `--verbose` - Show detailed progress information\n  * `--optimize` / `--no-optimize` - Enable/disable mutation optimization (default: enabled)\n  * `--optimize-level` - Preset: `conservative`, `balanced`, `aggressive` (default: `balanced`)\n  * `--min-complexity` - Override minimum complexity for optimizer\n  * `--max-per-function` - Override maximum mutations per function for optimizer\n"
   @type t :: %__MODULE__{
           files: String.t(),
           test_paths: [String.t()],
@@ -54,7 +19,6 @@ defmodule Muex.Config do
           min_complexity: non_neg_integer() | nil,
           max_per_function: pos_integer() | nil
         }
-
   @enforce_keys [:files, :test_paths, :language, :mutators]
   defstruct [
     :files,
@@ -76,34 +40,27 @@ defmodule Muex.Config do
     max_per_function: nil
   ]
 
-  @option_spec [
-    files: :string,
-    path: :string,
-    test_paths: :string,
-    app: :string,
-    language: :string,
-    mutators: :string,
-    mutator_paths: :string,
-    concurrency: :integer,
-    timeout: :integer,
-    fail_at: :integer,
-    format: :string,
-    min_score: :integer,
-    max_mutations: :integer,
-    no_filter: :boolean,
-    verbose: :boolean,
-    optimize: :boolean,
-    no_optimize: :boolean,
-    optimize_level: :string,
-    min_complexity: :integer,
-    max_per_function: :integer
-  ]
-
-  @doc """
-  Parses a list of CLI argument strings into a `%Config{}`.
-
-  Returns `{:ok, config}` or `{:error, reason}`.
-  """
+  @option_spec files: :string,
+               path: :string,
+               test_paths: :string,
+               app: :string,
+               language: :string,
+               mutators: :string,
+               mutator_paths: :string,
+               concurrency: :integer,
+               timeout: :integer,
+               fail_at: :integer,
+               format: :string,
+               min_score: :integer,
+               max_mutations: :integer,
+               no_filter: :boolean,
+               verbose: :boolean,
+               optimize: :boolean,
+               no_optimize: :boolean,
+               optimize_level: :string,
+               min_complexity: :integer,
+               max_per_function: :integer
+  @doc "Parses a list of CLI argument strings into a `%Config{}`.\n\nReturns `{:ok, config}` or `{:error, reason}`.\n"
   @spec from_args([String.t()]) :: {:ok, t()} | {:error, String.t()}
   def from_args(args) do
     {opts, _rest, invalid} = OptionParser.parse(args, strict: @option_spec)
@@ -115,16 +72,10 @@ defmodule Muex.Config do
     end
   end
 
-  @doc """
-  Builds a `%Config{}` from a keyword list (already parsed by OptionParser or
-  assembled programmatically).
-
-  Returns `{:ok, config}` or `{:error, reason}`.
-  """
+  @doc "Builds a `%Config{}` from a keyword list (already parsed by OptionParser or\nassembled programmatically).\n\nReturns `{:ok, config}` or `{:error, reason}`.\n"
   @spec from_opts(keyword()) :: {:ok, t()} | {:error, String.t()}
   def from_opts(opts) do
     app = Keyword.get(opts, :app)
-
     extra_paths = parse_mutator_paths(Keyword.get(opts, :mutator_paths))
 
     with {:ok, language} <- resolve_language(Keyword.get(opts, :language, "elixir")),
@@ -155,9 +106,7 @@ defmodule Muex.Config do
     end
   end
 
-  @doc """
-  Returns optimizer options derived from the config's optimization settings.
-  """
+  @doc "Returns optimizer options derived from the config's optimization settings.\n"
   @spec optimizer_opts(t()) :: keyword()
   def optimizer_opts(%__MODULE__{} = config) do
     base =
@@ -204,59 +153,28 @@ defmodule Muex.Config do
     end
   end
 
-  @doc """
-  Resolves `test_paths` entries into actual test file paths on disk.
-
-  Each entry in `test_paths` is treated as follows:
-    - Directory → expands to `dir/**/*_test.exs`
-    - Glob pattern (contains `*` or `?`) → expanded via `Path.wildcard/1`
-    - Regular file → taken literally
-  """
+  @doc "Resolves `test_paths` entries into actual test file paths on disk.\n\nEach entry in `test_paths` is treated as follows:\n  - Directory → expands to `dir/**/*_test.exs`\n  - Glob pattern (contains `*` or `?`) → expanded via `Path.wildcard/1`\n  - Regular file → taken literally\n"
   @spec resolve_test_files(t()) :: [Path.t()]
   def resolve_test_files(%__MODULE__{test_paths: paths}) do
     expand_test_paths(paths)
   end
 
-  @doc """
-  Expands a list of test path entries into actual file paths on disk.
-
-  Each entry is treated as follows:
-    - Directory -> expands to `dir/**/*_test.exs`
-    - Glob pattern (contains `*` or `?`) -> expanded via `Path.wildcard/1`
-    - Regular file -> taken literally
-    - Other -> attempted as a wildcard pattern
-  """
+  @doc "Expands a list of test path entries into actual file paths on disk.\n\nEach entry is treated as follows:\n  - Directory -> expands to `dir/**/*_test.exs`\n  - Glob pattern (contains `*` or `?`) -> expanded via `Path.wildcard/1`\n  - Regular file -> taken literally\n  - Other -> attempted as a wildcard pattern\n"
   @spec expand_test_paths([String.t()]) :: [Path.t()]
   def expand_test_paths(paths) when is_list(paths) do
-    paths
-    |> Enum.flat_map(&expand_test_path/1)
-    |> Enum.uniq()
+    paths |> Enum.flat_map(&expand_test_path/1) |> Enum.uniq()
   end
 
-  @doc """
-  Expands a single test path entry into matching file paths.
-
-  Handles directories, glob patterns, regular files, and fallback wildcard.
-  """
+  @doc "Expands a single test path entry into matching file paths.\n\nHandles directories, glob patterns, regular files, and fallback wildcard.\n"
   @spec expand_test_path(String.t()) :: [Path.t()]
   def expand_test_path(path) do
     cond do
-      String.contains?(path, ["*", "?"]) ->
-        Path.wildcard(path)
-
-      File.dir?(path) ->
-        Path.wildcard(Path.join([path, "**", "*_test.exs"]))
-
-      File.regular?(path) ->
-        [path]
-
-      true ->
-        # Might be a pattern that doesn't match anything yet, try wildcard
-        Path.wildcard(path)
+      String.contains?(path, ["*", "?"]) -> Path.wildcard(path)
+      File.dir?(path) -> Path.wildcard(Path.join([path, "**", "*_test.exs"]))
+      File.regular?(path) -> [path]
+      true -> Path.wildcard(path)
     end
   end
-
-  # -- Private resolution helpers --
 
   defp resolve_files(opts, app) do
     explicit = Keyword.get(opts, :files) || Keyword.get(opts, :path)
@@ -278,10 +196,7 @@ defmodule Muex.Config do
         end
 
       raw ->
-        raw
-        |> String.split(",")
-        |> Enum.map(&String.trim/1)
-        |> Enum.reject(&(&1 == ""))
+        raw |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
     end
   end
 
@@ -293,20 +208,15 @@ defmodule Muex.Config do
     end
   end
 
-  defp parse_mutator_paths(nil), do: []
-
-  defp parse_mutator_paths(raw) do
-    raw
-    |> String.split(",")
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
+  defp parse_mutator_paths(nil) do
+    []
   end
 
-  @language_map %{
-    "elixir" => Muex.Language.Elixir,
-    "erlang" => Muex.Language.Erlang
-  }
+  defp parse_mutator_paths(raw) do
+    raw |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+  end
 
+  @language_map %{"elixir" => Muex.Language.Elixir, "erlang" => Muex.Language.Erlang}
   defp resolve_language(name) do
     case Map.fetch(@language_map, name) do
       {:ok, mod} -> {:ok, mod}
@@ -318,31 +228,23 @@ defmodule Muex.Config do
   def all_mutators(extra_paths \\ []) do
     builtin = discover_mutators(:muex)
     external = load_external_mutators(extra_paths)
-
-    (builtin ++ external)
-    |> Enum.uniq()
-    |> Enum.sort_by(&Module.split/1)
+    (builtin ++ external) |> Enum.uniq() |> Enum.sort_by(&Module.split/1)
   end
 
   defp discover_mutators(app) do
     case :application.get_key(app, :modules) do
-      {:ok, modules} ->
-        Enum.filter(modules, &mutator?/1)
-
-      :undefined ->
-        []
+      {:ok, modules} -> Enum.filter(modules, &mutator?/1)
+      :undefined -> []
     end
   end
 
-  defp load_external_mutators(paths) when paths in [[], nil], do: []
+  defp load_external_mutators(paths) when paths in [[], nil] do
+    []
+  end
 
   defp load_external_mutators(paths) do
     paths
-    |> Enum.flat_map(fn path ->
-      path
-      |> Path.join("**/*.ex")
-      |> Path.wildcard()
-    end)
+    |> Enum.flat_map(fn path -> path |> Path.join("**/*.ex") |> Path.wildcard() end)
     |> Enum.flat_map(fn file ->
       file
       |> Code.compile_file()
@@ -352,11 +254,7 @@ defmodule Muex.Config do
   end
 
   defp mutator?(mod) do
-    behaviours =
-      mod.module_info(:attributes)
-      |> Keyword.get_values(:behaviour)
-      |> List.flatten()
-
+    behaviours = mod.module_info(:attributes) |> Keyword.get_values(:behaviour) |> List.flatten()
     Muex.Mutator in behaviours
   rescue
     _ -> false
@@ -369,7 +267,9 @@ defmodule Muex.Config do
     end)
   end
 
-  defp resolve_mutators(nil, extra_paths), do: {:ok, all_mutators(extra_paths)}
+  defp resolve_mutators(nil, extra_paths) do
+    {:ok, all_mutators(extra_paths)}
+  end
 
   defp resolve_mutators(raw, extra_paths) do
     names = raw |> String.split(",") |> Enum.map(&String.trim/1)
@@ -381,6 +281,7 @@ defmodule Muex.Config do
       end
     end)
   end
+
 
   defp validate_optimize_level(level) when level in ~w(conservative balanced aggressive) do
     {:ok, level}
