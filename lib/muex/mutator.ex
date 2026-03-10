@@ -5,8 +5,9 @@ defmodule Muex.Mutator do
   Mutators implement specific mutation strategies (e.g., arithmetic operators,
   boolean operators, literals) and return a list of possible mutations for a given AST.
 
-  Each mutator is language-agnostic and works with the raw AST structure provided
-  by the language adapter.
+  Each mutator declares which languages it supports via `supported_languages/0`.
+  Mutators targeting the same AST family (e.g., Elixir and Erlang both use BEAM
+  AST) can declare support for multiple languages.
 
   ## Example
 
@@ -24,6 +25,9 @@ defmodule Muex.Mutator do
 
         @impl true
         def description, do: "Mutates specific AST patterns"
+
+        @impl true
+        def supported_languages, do: [:elixir, :erlang]
       end
   """
   @typedoc """
@@ -65,6 +69,29 @@ defmodule Muex.Mutator do
     String describing the mutation strategy
   """
   @callback description() :: String.t()
+
+  @doc """
+  Returns the list of language adapter modules this mutator supports.
+
+  Mutators that work with the same AST format (e.g., BEAM languages like
+  Elixir and Erlang) can declare multiple languages. Discovery will filter
+  mutators based on the active language.
+
+  ## Returns
+
+    List of language adapter modules (e.g., `[Muex.Language.Elixir, Muex.Language.Erlang]`)
+  """
+  @callback supported_languages() :: [module()]
+
+  @doc """
+  Returns true if the given mutation is semantically equivalent to the original.
+
+  Optional callback — defaults to checking the `:equivalent` key in the
+  mutation map.
+  """
+  @callback equivalent?(mutation()) :: boolean()
+
+  @optional_callbacks [equivalent?: 1]
   @doc """
   Walks through an AST and applies all registered mutators.
 

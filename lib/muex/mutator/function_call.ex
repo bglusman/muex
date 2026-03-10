@@ -18,6 +18,9 @@ defmodule Muex.Mutator.FunctionCall do
   end
 
   @impl true
+  def supported_languages, do: [Muex.Language.Elixir, Muex.Language.Erlang]
+
+  @impl true
   def mutate(ast, context) do
     case ast do
       {func, meta, args} when is_atom(func) and is_list(args) and args != [] ->
