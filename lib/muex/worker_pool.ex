@@ -111,6 +111,7 @@ defmodule Muex.WorkerPool do
 
   @impl true
   def init(opts) do
+    Process.flag(:trap_exit, true)
     max_workers = Keyword.get(opts, :max_workers, @default_max_workers)
 
     state = %State{
@@ -394,4 +395,13 @@ defmodule Muex.WorkerPool do
   defp classify_test_result({:ok, %{failures: _}}), do: :killed
   defp classify_test_result({:error, :timeout}), do: :timeout
   defp classify_test_result({:error, _}), do: :invalid
+
+  @impl true
+  def terminate(_reason, state) do
+    if state.sandboxes != [] do
+      Muex.Sandbox.cleanup(state.sandboxes)
+    end
+
+    :ok
+  end
 end
