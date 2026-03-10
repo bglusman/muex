@@ -63,9 +63,11 @@ defmodule Muex.Sandbox do
     umbrella? = File.dir?(Path.join(project_root, "apps"))
 
     if umbrella? do
-      # Mirror apps/ as a directory tree of symlinks so individual
-      # source files can be replaced with mutated copies.
-      mirror_source_tree(root, project_root, "apps")
+      # For umbrellas: create apps/ dir and symlink each app as a whole.
+      # apply_mutation/4 will lazily replace the specific app's symlink
+      # with a file-level mirror when a mutation targets it. This avoids
+      # creating 100K+ symlinks for large umbrella projects.
+      setup_umbrella_apps(root, project_root)
     else
       mirror_source_tree(root, project_root, "lib")
     end
@@ -94,6 +96,11 @@ defmodule Muex.Sandbox do
   @spec apply_mutation(sandbox(), Path.t(), String.t(), atom() | nil) :: :ok | {:error, term()}
   def apply_mutation(sandbox, original_path, mutated_source, module_name) do
     sandbox_path = Path.join(sandbox.root, original_path)
+
+    # For umbrella projects: ensure the app containing the mutated file
+    # has been mirrored (symlink replaced with file-level copies) so we
+    # can swap individual source files.
+    ensure_app_mirrored_for_file(sandbox, original_path)
 
     # Ensure the mutated app's build dir is a real copy (not a symlink)
     # so this sandbox can recompile independently.
@@ -127,7 +134,6 @@ defmodule Muex.Sandbox do
     sandbox_path = Path.join(sandbox.root, original_path)
     project_path = Path.join(sandbox.project_root, original_path)
 
-    # Remove the mutated file and restore the symlink
     File.rm(sandbox_path)
     File.ln_s!(project_path, sandbox_path)
 
@@ -172,6 +178,43 @@ defmodule Muex.Sandbox do
       if File.dir?(source) do
         safe_symlink(source, Path.join(root, dir))
       end
+    end
+  end
+
+  defp setup_umbrella_apps(root, project_root) do
+    apps_source = Path.join(project_root, "apps")
+    apps_target = Path.join(root, "apps")
+    File.mkdir_p!(apps_target)
+
+    apps_source
+    |> File.ls!()
+    |> Enum.each(fn app_name ->
+      source_app = Path.join(apps_source, app_name)
+
+      if File.dir?(source_app) do
+        safe_symlink(source_app, Path.join(apps_target, app_name))
+      end
+    end)
+  end
+
+  # Replace an app's directory symlink with a file-level mirror so that
+  # individual source files can be swapped with mutated copies.
+  defp ensure_app_mirrored(sandbox, app_name) do
+    app_target = Path.join([sandbox.root, "apps", app_name])
+
+    case File.read_link(app_target) do
+      {:ok, _link_target} ->
+        # It's a symlink to the real app dir — replace with mirror
+        File.rm!(app_target)
+        mirror_source_tree(
+          sandbox.root,
+          sandbox.project_root,
+          Path.join("apps", app_name)
+        )
+
+      {:error, _} ->
+        # Already mirrored from a previous mutation
+        :ok
     end
   end
 
@@ -258,6 +301,14 @@ defmodule Muex.Sandbox do
     end
   end
 
+
+  defp ensure_app_mirrored_for_file(sandbox, file_path) do
+    case extract_app_name_from_path(file_path) do
+      nil -> :ok
+      app_name -> ensure_app_mirrored(sandbox, app_name)
+    end
+  end
+
   # Given a file path like "apps/supply_chain/lib/foo.ex", extract the app
   # name ("supply_chain") and ensure its _build/test/lib/<app> directory
   # is a real deep copy (not a symlink) so we can delete its beam files.
@@ -286,7 +337,9 @@ defmodule Muex.Sandbox do
 
   defp ensure_build_copy(sandbox, app_name) do
     target_app_build = Path.join([sandbox.root, "_build", sandbox.build_env, "lib", app_name])
-    source_app_build = Path.join([sandbox.project_root, "_build", sandbox.build_env, "lib", app_name])
+
+    source_app_build =
+      Path.join([sandbox.project_root, "_build", sandbox.build_env, "lib", app_name])
 
     # If it's a symlink, replace with a deep copy
     case File.read_link(target_app_build) do
