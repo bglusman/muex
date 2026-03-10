@@ -163,7 +163,9 @@ defmodule Muex.MixProject do
         Muex.Mutator.Comparison,
         Muex.Mutator.Conditional,
         Muex.Mutator.FunctionCall,
-        Muex.Mutator.Literal
+        Muex.Mutator.Literal,
+        Muex.Mutator.ReturnValue,
+        Muex.Mutator.StatementDeletion
       ],
       "Core Components": [
         Muex.Compiler,
