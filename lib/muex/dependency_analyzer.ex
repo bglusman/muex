@@ -29,7 +29,8 @@ defmodule Muex.DependencyAnalyzer do
   @spec analyze([Path.t()] | Path.t()) :: dependency_map()
   def analyze(test_paths \\ ["test"]) do
     test_paths
-    |> find_test_files()
+    |> List.wrap()
+    |> Config.expand_test_paths()
     |> Enum.reduce(%{}, fn test_file, acc ->
       modules = extract_module_dependencies(test_file)
 
@@ -81,15 +82,6 @@ defmodule Muex.DependencyAnalyzer do
     end
   end
 
-  # Find all test files from a list of paths
-  defp find_test_files(test_paths) when is_list(test_paths) do
-    Config.expand_test_paths(test_paths)
-  end
-
-  # Backward compat: single string still works
-  defp find_test_files(test_dir) when is_binary(test_dir) do
-    find_test_files([test_dir])
-  end
 
   # Extract module dependencies from a test file
   defp extract_module_dependencies(test_file) do
