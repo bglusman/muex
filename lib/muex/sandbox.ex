@@ -206,6 +206,7 @@ defmodule Muex.Sandbox do
       {:ok, _link_target} ->
         # It's a symlink to the real app dir — replace with mirror
         File.rm!(app_target)
+
         mirror_source_tree(
           sandbox.root,
           sandbox.project_root,
@@ -300,7 +301,6 @@ defmodule Muex.Sandbox do
       File.mkdir_p!(Path.join([root, "_build", build_env, "lib"]))
     end
   end
-
 
   defp ensure_app_mirrored_for_file(sandbox, file_path) do
     case extract_app_name_from_path(file_path) do
