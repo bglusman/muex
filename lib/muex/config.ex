@@ -18,6 +18,9 @@ defmodule Muex.Config do
       `apps/<app>/test` unless those flags are provided explicitly.
     * `--language` - Language adapter: `elixir` or `erlang` (default: `elixir`)
     * `--mutators` - Comma-separated list of mutator names (default: all)
+    * `--mutator-paths` - Comma-separated directories containing custom mutator
+      modules implementing `Muex.Mutator` behaviour. Files are compiled and
+      loaded at runtime.
     * `--concurrency` - Number of parallel workers (default: number of schedulers)
     * `--timeout` - Test timeout in milliseconds (default: 5000)
     * `--fail-at` - Minimum mutation score percentage to pass (default: 100)
@@ -80,6 +83,7 @@ defmodule Muex.Config do
     app: :string,
     language: :string,
     mutators: :string,
+    mutator_paths: :string,
     concurrency: :integer,
     timeout: :integer,
     fail_at: :integer,
@@ -121,8 +125,10 @@ defmodule Muex.Config do
   def from_opts(opts) do
     app = Keyword.get(opts, :app)
 
+    extra_paths = parse_mutator_paths(Keyword.get(opts, :mutator_paths))
+
     with {:ok, language} <- resolve_language(Keyword.get(opts, :language, "elixir")),
-         {:ok, mutators} <- resolve_mutators(Keyword.get(opts, :mutators)),
+         {:ok, mutators} <- resolve_mutators(Keyword.get(opts, :mutators), extra_paths),
          {:ok, optimize_level} <-
            validate_optimize_level(Keyword.get(opts, :optimize_level, "balanced")) do
       config = %__MODULE__{
@@ -287,6 +293,15 @@ defmodule Muex.Config do
     end
   end
 
+  defp parse_mutator_paths(nil), do: []
+
+  defp parse_mutator_paths(raw) do
+    raw
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
   @language_map %{
     "elixir" => Muex.Language.Elixir,
     "erlang" => Muex.Language.Erlang
@@ -299,31 +314,68 @@ defmodule Muex.Config do
     end
   end
 
-  @mutator_map %{
-    "arithmetic" => Muex.Mutator.Arithmetic,
-    "comparison" => Muex.Mutator.Comparison,
-    "boolean" => Muex.Mutator.Boolean,
-    "literal" => Muex.Mutator.Literal,
-    "function_call" => Muex.Mutator.FunctionCall,
-    "conditional" => Muex.Mutator.Conditional
-  }
+  @doc false
+  def all_mutators(extra_paths \\ []) do
+    builtin = discover_mutators(:muex)
+    external = load_external_mutators(extra_paths)
 
-  @all_mutators [
-    Muex.Mutator.Arithmetic,
-    Muex.Mutator.Comparison,
-    Muex.Mutator.Boolean,
-    Muex.Mutator.Literal,
-    Muex.Mutator.FunctionCall,
-    Muex.Mutator.Conditional
-  ]
+    (builtin ++ external)
+    |> Enum.uniq()
+    |> Enum.sort_by(&Module.split/1)
+  end
 
-  defp resolve_mutators(nil), do: {:ok, @all_mutators}
+  defp discover_mutators(app) do
+    case :application.get_key(app, :modules) do
+      {:ok, modules} ->
+        Enum.filter(modules, &mutator?/1)
 
-  defp resolve_mutators(raw) do
+      :undefined ->
+        []
+    end
+  end
+
+  defp load_external_mutators(paths) when paths in [[], nil], do: []
+
+  defp load_external_mutators(paths) do
+    paths
+    |> Enum.flat_map(fn path ->
+      path
+      |> Path.join("**/*.ex")
+      |> Path.wildcard()
+    end)
+    |> Enum.flat_map(fn file ->
+      file
+      |> Code.compile_file()
+      |> Enum.map(fn {mod, _bytecode} -> mod end)
+      |> Enum.filter(&mutator?/1)
+    end)
+  end
+
+  defp mutator?(mod) do
+    behaviours =
+      mod.module_info(:attributes)
+      |> Keyword.get_values(:behaviour)
+      |> List.flatten()
+
+    Muex.Mutator in behaviours
+  rescue
+    _ -> false
+  end
+
+  defp mutator_map(extra_paths) do
+    Map.new(all_mutators(extra_paths), fn mod ->
+      key = mod |> Module.split() |> List.last() |> Macro.underscore()
+      {key, mod}
+    end)
+  end
+
+  defp resolve_mutators(nil, extra_paths), do: {:ok, all_mutators(extra_paths)}
+
+  defp resolve_mutators(raw, extra_paths) do
     names = raw |> String.split(",") |> Enum.map(&String.trim/1)
 
     Enum.reduce_while(names, {:ok, []}, fn name, {:ok, acc} ->
-      case Map.fetch(@mutator_map, name) do
+      case Map.fetch(mutator_map(extra_paths), name) do
         {:ok, mod} -> {:cont, {:ok, acc ++ [mod]}}
         :error -> {:halt, {:error, "Unknown mutator: #{name}"}}
       end
