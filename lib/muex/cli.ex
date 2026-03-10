@@ -91,7 +91,8 @@ defmodule Muex.CLI do
         --max-mutations <n>         Maximum mutations to test (default: unlimited)
         --no-filter                 Disable intelligent file filtering
         --verbose                   Show detailed progress information
-        --optimize                  Enable mutation optimization
+        --optimize                  Enable mutation optimization (default: enabled)
+        --no-optimize               Disable mutation optimization
         --optimize-level <level>    Optimization: conservative, balanced, aggressive
         --min-complexity <n>        Minimum complexity for mutations (default: 2)
         --max-per-function <n>      Max mutations per function (default: 20)

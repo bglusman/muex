@@ -21,6 +21,8 @@ defmodule Muex.ConfigTest do
       assert config.min_score == 20
       assert config.min_complexity == nil
       assert config.max_per_function == nil
+      assert Muex.Mutator.Literal in config.mutators
+      assert length(config.mutators) == 6
     end
 
     test "parses --files flag" do

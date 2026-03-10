@@ -111,13 +111,10 @@ defmodule Muex.TestRunner.Port do
     :error, :badarg -> :ok
   end
 
-  defp count_failures(_output, exit_code) when exit_code != 0 do
-    # Non-zero exit means tests failed or compilation errored — mutation killed.
-    # We still try to parse the actual failure count for reporting accuracy.
-    1
-  end
-
   defp count_failures(output, _exit_code) do
+    # Always try to parse the actual failure count from output for reporting
+    # accuracy. Fall back to 1 only when parsing fails (e.g. no recognizable
+    # ExUnit summary because something crashed).
     case Regex.run(~r/(\d+) failures?/, output) do
       [_, count] ->
         String.to_integer(count)
