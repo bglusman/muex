@@ -270,10 +270,10 @@ defmodule Muex.ConfigTest do
     end
   end
 
-  describe "resolve_test_files/1" do
+  describe "expand_test_paths/1" do
     test "expands directory to test files" do
       assert {:ok, config} = Config.from_args(["--test-paths", "test"])
-      files = Config.resolve_test_files(config)
+      files = Config.expand_test_paths(config.test_paths)
       # Our project has test files in test/
       assert match?([_ | _], files)
       assert Enum.all?(files, &String.ends_with?(&1, "_test.exs"))
@@ -281,14 +281,14 @@ defmodule Muex.ConfigTest do
 
     test "glob patterns are expanded" do
       assert {:ok, config} = Config.from_args(["--test-paths", "test/muex/*_test.exs"])
-      files = Config.resolve_test_files(config)
+      files = Config.expand_test_paths(config.test_paths)
       assert match?([_ | _], files)
       assert Enum.all?(files, &String.starts_with?(&1, "test/muex/"))
     end
 
     test "nonexistent path returns empty" do
       assert {:ok, config} = Config.from_args(["--test-paths", "nonexistent_dir"])
-      files = Config.resolve_test_files(config)
+      files = Config.expand_test_paths(config.test_paths)
       assert files == []
     end
 
@@ -296,7 +296,7 @@ defmodule Muex.ConfigTest do
       assert {:ok, config} =
                Config.from_args(["--test-paths", "test/muex,test/muex"])
 
-      files = Config.resolve_test_files(config)
+      files = Config.expand_test_paths(config.test_paths)
       # Should be deduped
       assert files == Enum.uniq(files)
     end

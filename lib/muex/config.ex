@@ -223,19 +223,6 @@ defmodule Muex.Config do
   end
 
   @doc """
-  Resolves `test_paths` entries into actual test file paths on disk.
-
-  Each entry in `test_paths` is treated as follows:
-    - Directory → expands to `dir/**/*_test.exs`
-    - Glob pattern (contains `*` or `?`) → expanded via `Path.wildcard/1`
-    - Regular file → taken literally
-  """
-  @spec resolve_test_files(t()) :: [Path.t()]
-  def resolve_test_files(%__MODULE__{test_paths: paths}) do
-    expand_test_paths(paths)
-  end
-
-  @doc """
   Expands a list of test path entries into actual file paths on disk.
 
   Each entry is treated as follows:
