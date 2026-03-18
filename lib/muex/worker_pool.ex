@@ -101,7 +101,11 @@ defmodule Muex.WorkerPool do
 
   @impl true
   def init(opts) do
-    max_workers = Keyword.get(opts, :max_workers, @default_max_workers)
+    # The worker pool tests mutations for a single file. Since port-based
+    # testing overwrites the source file on disk, only one worker can run at
+    # a time — parallel writers to the same file race on read/write/restore.
+    max_workers = 1
+    _requested = Keyword.get(opts, :max_workers, @default_max_workers)
 
     state = %State{
       max_workers: max_workers,
@@ -257,9 +261,23 @@ defmodule Muex.WorkerPool do
         {:ok, mutated_file} ->
           {:ok, mutated_source} = File.read(mutated_file)
           original_file = file_entry.path
-          {:ok, original_source} = File.read(original_file)
+          # Use the source captured at load time, not a re-read from disk.
+          # Re-reading would see another worker's mutation during parallel runs.
+          original_source = Map.get(file_entry, :original_source)
           backup_file = original_file <> ".backup"
-          File.write!(backup_file, original_source)
+
+          # If we have the original source in memory, write a backup for crash
+          # recovery. If not (older callers without original_source), fall back
+          # to reading from disk.
+          original_source =
+            if original_source do
+              File.write!(backup_file, original_source)
+              original_source
+            else
+              {:ok, src} = File.read(original_file)
+              File.write!(backup_file, src)
+              src
+            end
 
           try do
             File.write!(original_file, mutated_source)
@@ -267,8 +285,6 @@ defmodule Muex.WorkerPool do
             module_name = file_entry.module_name
 
             if module_name do
-              # When Elixir atoms are string-interpolated, they already include
-              # the "Elixir." prefix (e.g. Elixir.MyApp.MyModule)
               beam_pattern = "_build/**/#{module_name}.beam"
               Path.wildcard(beam_pattern) |> Enum.each(&File.rm/1)
             end

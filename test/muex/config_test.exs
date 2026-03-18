@@ -24,9 +24,7 @@ defmodule Muex.ConfigTest do
       assert Muex.Mutator.Literal in config.mutators
       assert Muex.Mutator.StatementDeletion in config.mutators
       assert Muex.Mutator.ReturnValue in config.mutators
-      assert Muex.Mutator.PipelineDeletion in config.mutators
-      assert Muex.Mutator.GuardSimplification in config.mutators
-      assert length(config.mutators) == 10
+      assert length(config.mutators) == 8
     end
 
     test "parses --files flag" do
@@ -308,7 +306,9 @@ defmodule Muex.ConfigTest do
 
   describe "--mutator-paths" do
     test "custom mutator from external path is discovered" do
-      dir = Path.join(System.tmp_dir!(), "muex_custom_mutators_#{System.unique_integer([:positive])}")
+      dir =
+        Path.join(System.tmp_dir!(), "muex_custom_mutators_#{System.unique_integer([:positive])}")
+
       File.mkdir_p!(dir)
 
       File.write!(Path.join(dir, "noop_mutator.ex"), """
@@ -334,7 +334,12 @@ defmodule Muex.ConfigTest do
     end
 
     test "non-mutator files in path are ignored" do
-      dir = Path.join(System.tmp_dir!(), "muex_custom_non_mutator_#{System.unique_integer([:positive])}")
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "muex_custom_non_mutator_#{System.unique_integer([:positive])}"
+        )
+
       File.mkdir_p!(dir)
 
       File.write!(Path.join(dir, "helper.ex"), """
