@@ -5,7 +5,12 @@ defmodule Muex.Loader do
   The loader discovers source files, filters out test files and other
   unwanted patterns, and parses them into ASTs using the provided language adapter.
   """
-  @type file_entry :: %{path: String.t(), ast: term(), module_name: atom() | nil}
+  @type file_entry :: %{
+          path: String.t(),
+          ast: term(),
+          module_name: atom() | nil,
+          original_source: String.t()
+        }
   @doc """
   Loads source files from the given path pattern using the language adapter.
 
@@ -21,7 +26,7 @@ defmodule Muex.Loader do
 
     `{:ok, files}` where files is a list of `file_entry` maps
   """
-  @spec load(String.t(), module(), keyword()) :: {:ok, [file_entry()]} | {:error, term()}
+  @spec load(String.t(), module(), keyword()) :: {:ok, [file_entry()]}
   def load(path_pattern, language_adapter, opts \\ []) do
     extensions = language_adapter.file_extensions()
     test_pattern = language_adapter.test_file_pattern()
@@ -76,7 +81,10 @@ defmodule Muex.Loader do
     with {:ok, source} <- File.read(path),
          {:ok, ast} <- language_adapter.parse(source) do
       module_name = extract_module_name(ast)
-      {:ok, %{path: path, ast: ast, module_name: module_name}}
+      # Store the verbatim source so workers can restore the file after
+      # mutation without re-reading from disk (which may see a concurrent
+      # worker's mutation instead of the original).
+      {:ok, %{path: path, ast: ast, module_name: module_name, original_source: source}}
     end
   end
 
