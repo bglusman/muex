@@ -2,7 +2,7 @@ defmodule Muex.MixProject do
   use Mix.Project
 
   @app :muex
-  @version "0.5.0"
+  @version "0.5.1"
   @source_url "https://github.com/Oeditus/muex"
 
   def project do
@@ -113,7 +113,7 @@ defmodule Muex.MixProject do
         docs/MUTATION_OPTIMIZATION.md
         docs/COMPARISON.md
       ),
-      licenses: ["GPL-3.0", "CC-BY-SA-4.0"],
+      licenses: ["MIT"],
       maintainers: ["Aleksei Matiushkin"],
       links: %{
         "GitHub" => @source_url,

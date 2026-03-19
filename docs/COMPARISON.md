@@ -11,7 +11,7 @@ Muex, Darwin, and Exavier are all mutation testing tools for the BEAM ecosystem.
 ### Muex
 - **Version**: 0.5.0 (March 2026, 8 published releases)
 - **Elixir requirement**: ~> 1.14
-- **License**: GPL-3.0 + CC-BY-SA-4.0
+- **License**: MIT
 - **Hex downloads**: 304 all-time
 - **GitHub stars**: New project
 - **Maintainer**: Aleksei Matiushkin (mudasobwa)
