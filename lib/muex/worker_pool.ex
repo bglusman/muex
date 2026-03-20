@@ -244,23 +244,57 @@ defmodule Muex.WorkerPool do
           {:ok, original_source} = File.read(original_file)
           backup_file = original_file <> ".backup"
           File.write!(backup_file, original_source)
-          File.write!(original_file, mutated_source)
-          File.rm!(mutated_file)
-          module_name = file_entry.module_name
 
-          if module_name do
-            # When Elixir atoms are string-interpolated, they already include
-            # the "Elixir." prefix (e.g. Elixir.MyApp.MyModule)
-            beam_pattern = "_build/**/#{module_name}.beam"
-            Path.wildcard(beam_pattern) |> Enum.each(&File.rm/1)
+          try do
+            File.write!(original_file, mutated_source)
+            File.rm!(mutated_file)
+            module_name = file_entry.module_name
+
+            # Pre-compile the mutated module and write the .beam directly to
+            # _build, so the child `mix test` process finds an up-to-date beam
+            # and skips recompilation entirely. This avoids the expensive
+            # dependency-graph walk that Mix performs in umbrella projects when
+            # it detects a stale module.
+            beam_precompiled =
+              if module_name do
+                try do
+                  case Code.compile_string(mutated_source, original_file) do
+                    [{_mod, binary}] ->
+                      beam_pattern = "_build/**/#{module_name}.beam"
+
+                      Path.wildcard(beam_pattern)
+                      |> Enum.each(fn beam_path -> File.write!(beam_path, binary) end)
+
+                      true
+
+                    _ ->
+                      false
+                  end
+                rescue
+                  _ -> false
+                end
+              else
+                false
+              end
+
+            # Fallback: if pre-compilation failed, delete the beam so the child
+            # process recompiles (original behavior).
+            if not beam_precompiled and module_name do
+              beam_pattern = "_build/**/#{module_name}.beam"
+              Path.wildcard(beam_pattern) |> Enum.each(&File.rm/1)
+            end
+
+            test_result =
+              Muex.TestRunner.Port.run_tests(test_files, original_file,
+                timeout_ms: timeout_ms,
+                no_compile: beam_precompiled
+              )
+
+            classify_test_result(test_result)
+          after
+            File.write!(original_file, original_source)
+            File.rm(backup_file)
           end
-
-          test_result =
-            Muex.TestRunner.Port.run_tests(test_files, original_file, timeout_ms: timeout_ms)
-
-          File.write!(original_file, original_source)
-          File.rm(backup_file)
-          classify_test_result(test_result)
 
         {:error, reason} ->
           {:invalid, reason}

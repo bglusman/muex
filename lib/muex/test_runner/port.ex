@@ -36,10 +36,11 @@ defmodule Muex.TestRunner.Port do
   def run_tests(test_files, _mutated_file \\ nil, opts \\ []) do
     timeout_ms = Keyword.get(opts, :timeout_ms, 5000)
     mix_env = Keyword.get(opts, :mix_env, "test")
+    no_compile = Keyword.get(opts, :no_compile, false)
     start_time = System.monotonic_time(:millisecond)
 
     result =
-      case spawn_test_port(test_files, mix_env, timeout_ms) do
+      case spawn_test_port(test_files, mix_env, timeout_ms, no_compile) do
         {:ok, output, exit_code} ->
           duration_ms = System.monotonic_time(:millisecond) - start_time
           failures = count_failures(output, exit_code)
@@ -54,12 +55,20 @@ defmodule Muex.TestRunner.Port do
     result
   end
 
-  defp spawn_test_port(test_files, mix_env, timeout_ms) do
-    # `mix test` does incremental compilation automatically. The worker pool
-    # already deleted the .beam file for the mutated module, so Mix will detect
-    # the changed source and recompile just that one module. Using `compile --force`
-    # here would recompile the entire project per mutation — catastrophic in umbrellas.
-    args = ["test" | test_files]
+  defp spawn_test_port(test_files, mix_env, timeout_ms, no_compile) do
+    # When the worker pool pre-compiled the mutated module and wrote the .beam
+    # directly, we pass --no-compile to skip Mix's compilation phase entirely.
+    # This avoids the expensive umbrella dependency-graph walk that causes
+    # timeouts. We also always pass --no-deps-check and --no-archives-check
+    # since deps don't change between mutations.
+    compile_flags =
+      if no_compile do
+        ["--no-compile", "--no-deps-check", "--no-archives-check"]
+      else
+        ["--no-deps-check", "--no-archives-check"]
+      end
+
+    args = ["test"] ++ compile_flags ++ test_files
 
     current_env =
       System.get_env()
