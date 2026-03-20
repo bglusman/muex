@@ -334,12 +334,7 @@ defmodule Muex.WorkerPool do
                   mutation,
                   file_path,
                   Enum.at(state.sandboxes, sandbox_idx),
-                  state.file_entries,
-                  state.language_adapter,
-                  state.dependency_map,
-                  state.file_to_module,
-                  state.opts,
-                  state.test_paths
+                  state
                 )
 
               send(parent, {:worker_done, worker_ref, result})
@@ -400,56 +395,52 @@ defmodule Muex.WorkerPool do
 
   # -- Worker execution --
 
-  defp run_mutation_worker(
-         mutation,
-         file_path,
-         sandbox,
-         file_entries,
-         language_adapter,
-         dependency_map,
-         file_to_module,
-         opts,
-         test_paths
-       ) do
-    timeout_ms = Keyword.get(opts, :timeout_ms, 5000)
+  defp run_mutation_worker(mutation, file_path, sandbox, state) do
+    timeout_ms = Keyword.get(state.opts, :timeout_ms, 5000)
     start_time = System.monotonic_time(:millisecond)
 
-    file_entry = Map.fetch!(file_entries, file_path)
+    file_entry = Map.fetch!(state.file_entries, file_path)
 
     # Resolve test files for this mutation
     test_files =
-      DependencyAnalyzer.get_tests_for_mutation(mutation, dependency_map, file_to_module)
+      DependencyAnalyzer.get_tests_for_mutation(
+        mutation,
+        state.dependency_map,
+        state.file_to_module
+      )
 
     test_files =
       if match?([], test_files) do
-        Config.expand_test_paths(test_paths)
+        Config.expand_test_paths(state.test_paths)
       else
         test_files
       end
 
     result =
-      case Compiler.compile_to_file(mutation, file_entry, language_adapter) do
+      case Compiler.compile_to_file(mutation, file_entry, state.language_adapter) do
         {:ok, mutated_file} ->
           {:ok, mutated_source} = File.read(mutated_file)
           File.rm!(mutated_file)
 
           # Apply the mutation to the sandbox (not the real project)
-          :ok =
-            Sandbox.apply_mutation(
-              sandbox,
-              file_path,
-              mutated_source,
-              file_entry.module_name
-            )
+          case Sandbox.apply_mutation(sandbox, file_path, mutated_source, file_entry.module_name) do
+            {:ok, precompiled} ->
+              # Run tests from the sandbox directory
+              test_result =
+                PortRunner.run_tests(test_files,
+                  timeout_ms: timeout_ms,
+                  cd: sandbox.root,
+                  no_compile: precompiled
+                )
 
-          # Run tests from the sandbox directory
-          test_result =
-            PortRunner.run_tests(test_files, timeout_ms: timeout_ms, cd: sandbox.root)
+              # Restore the sandbox for the next mutation
+              Sandbox.restore(sandbox, file_path)
 
-          # Restore the sandbox for the next mutation
-          Sandbox.restore(sandbox, file_path)
+              classify_test_result(test_result)
 
-          classify_test_result(test_result)
+            {:error, reason} ->
+              {:invalid, reason}
+          end
 
         {:error, reason} ->
           {:invalid, reason}

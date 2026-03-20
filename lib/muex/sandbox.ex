@@ -92,12 +92,14 @@ defmodule Muex.Sandbox do
 
   @doc """
   Applies a mutation to a sandbox by writing the mutated source to the
-  sandbox's copy of the file, and deleting the beam file so `mix test`
-  triggers incremental recompilation.
+  sandbox's copy of the file, and pre-compiling the beam when possible
+  so `mix test` can skip recompilation.
 
-  Returns `:ok` or `{:error, reason}`.
+  Returns `{:ok, precompiled?}` where `precompiled?` indicates whether the
+  mutated module's beam was written directly, or `{:error, reason}`.
   """
-  @spec apply_mutation(sandbox(), Path.t(), String.t(), atom() | nil) :: :ok | {:error, term()}
+  @spec apply_mutation(sandbox(), Path.t(), String.t(), atom() | nil) ::
+          {:ok, boolean()} | {:error, term()}
   def apply_mutation(sandbox, original_path, mutated_source, module_name) do
     sandbox_path = Path.join(sandbox.root, original_path)
 
@@ -115,14 +117,41 @@ defmodule Muex.Sandbox do
 
     case File.write(sandbox_path, mutated_source) do
       :ok ->
-        # Delete beam file to force recompilation of this module only.
-        # Elixir module atoms stringify with "Elixir." prefix automatically.
-        if module_name do
-          beam_pattern = Path.join([sandbox.root, "_build", "**", "#{module_name}.beam"])
-          Path.wildcard(beam_pattern) |> Enum.each(&File.rm/1)
-        end
+        precompiled =
+          if module_name do
+            beam_pattern = Path.join([sandbox.root, "_build", "**", "#{module_name}.beam"])
+            beam_paths = Path.wildcard(beam_pattern)
 
-        :ok
+            # Try to pre-compile the mutated module and write the .beam directly,
+            # so the child `mix test` process finds an up-to-date beam and skips
+            # recompilation. This avoids the expensive dependency-graph walk that
+            # Mix performs in umbrella projects when it detects a stale module.
+            compiled =
+              try do
+                case Code.compile_string(mutated_source, sandbox_path) do
+                  [{_mod, binary}] ->
+                    Enum.each(beam_paths, fn path -> File.write!(path, binary) end)
+                    true
+
+                  _ ->
+                    false
+                end
+              rescue
+                _ -> false
+              end
+
+            # Fallback: if pre-compilation failed, delete the beam so the child
+            # process recompiles (original behavior).
+            if not compiled do
+              Enum.each(beam_paths, &File.rm/1)
+            end
+
+            compiled
+          else
+            false
+          end
+
+        {:ok, precompiled}
 
       {:error, reason} ->
         {:error, reason}

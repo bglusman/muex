@@ -32,7 +32,7 @@ defmodule Muex.SandboxTest do
 
       # Source files inside lib/ should be symlinks
       lib_files = Path.wildcard(Path.join([root, "lib", "**", "*.ex"]))
-      assert length(lib_files) > 0
+      assert match?([_ | _], lib_files)
 
       for file <- lib_files do
         assert {:ok, _target} = File.read_link(file),
@@ -63,7 +63,7 @@ defmodule Muex.SandboxTest do
       assert {:ok, _} = File.read_link(sandbox_path)
 
       # Apply mutation
-      :ok = Sandbox.apply_mutation(sandbox, target_file, "# mutated content", nil)
+      {:ok, _precompiled} = Sandbox.apply_mutation(sandbox, target_file, "# mutated content", nil)
 
       # After: should be a real file with mutated content
       assert {:error, _} = File.read_link(sandbox_path)
@@ -78,7 +78,7 @@ defmodule Muex.SandboxTest do
       target_file = "lib/muex.ex"
       sandbox_path = Path.join(sandbox.root, target_file)
 
-      :ok = Sandbox.apply_mutation(sandbox, target_file, "# mutated", nil)
+      {:ok, _precompiled} = Sandbox.apply_mutation(sandbox, target_file, "# mutated", nil)
       assert File.read!(sandbox_path) == "# mutated"
 
       :ok = Sandbox.restore(sandbox, target_file)
@@ -103,7 +103,7 @@ defmodule Muex.SandboxTest do
       # Each should have lib/ with files
       for sandbox <- sandboxes do
         lib_files = Path.wildcard(Path.join([sandbox.root, "lib", "**", "*.ex"]))
-        assert length(lib_files) > 0
+        assert match?([_ | _], lib_files)
       end
     end
   end
@@ -134,7 +134,7 @@ defmodule Muex.SandboxTest do
       target_file = "lib/muex.ex"
 
       # Mutate in sandbox 1
-      :ok = Sandbox.apply_mutation(sb1, target_file, "# sandbox 1 mutation", nil)
+      {:ok, _precompiled} = Sandbox.apply_mutation(sb1, target_file, "# sandbox 1 mutation", nil)
 
       # Sandbox 2 should still have the original (via symlink)
       sb2_path = Path.join(sb2.root, target_file)

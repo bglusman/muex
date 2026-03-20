@@ -37,6 +37,7 @@ defmodule Muex.TestRunner.Port do
     timeout_ms = Keyword.get(opts, :timeout_ms, 5000)
     mix_env = Keyword.get(opts, :mix_env, "test")
     cd = Keyword.get(opts, :cd)
+    no_compile = Keyword.get(opts, :no_compile, false)
     start_time = System.monotonic_time(:millisecond)
 
     # When running from a sandbox, test paths are relative and resolve
@@ -45,7 +46,7 @@ defmodule Muex.TestRunner.Port do
     resolved_files = test_files
 
     result =
-      case spawn_test_port(resolved_files, mix_env, timeout_ms, cd) do
+      case spawn_test_port(resolved_files, mix_env, timeout_ms, cd, no_compile) do
         {:ok, output, exit_code} ->
           duration_ms = System.monotonic_time(:millisecond) - start_time
           failures = count_failures(output, exit_code)
@@ -60,8 +61,19 @@ defmodule Muex.TestRunner.Port do
     result
   end
 
-  defp spawn_test_port(test_files, mix_env, timeout_ms, cd) do
-    args = ["test" | test_files]
+  defp spawn_test_port(test_files, mix_env, timeout_ms, cd, no_compile) do
+    # When the caller pre-compiled the mutated module and wrote the .beam
+    # directly, we pass --no-compile to skip Mix's compilation phase entirely.
+    # We also always pass --no-deps-check and --no-archives-check since deps
+    # don't change between mutations.
+    compile_flags =
+      if no_compile do
+        ["--no-compile", "--no-deps-check", "--no-archives-check"]
+      else
+        ["--no-deps-check", "--no-archives-check"]
+      end
+
+    args = ["test"] ++ compile_flags ++ test_files
 
     current_env =
       System.get_env()
