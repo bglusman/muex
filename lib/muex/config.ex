@@ -22,13 +22,17 @@ defmodule Muex.Config do
     * `:mutators` - A `%{String.t() => module()}` map of additional
       mutators. Each key is the CLI name usable in `--mutators` and the
       value is a module implementing the `Muex.Mutator` behaviour.
+      Built-in mutators inside the `:muex` application are auto-discovered
+      at runtime via behaviour introspection, so this map only needs to
+      provide a CLI name -> module mapping for external mutators that
+      live outside the `:muex` app and therefore cannot be auto-discovered.
 
           config :muex, mutators: %{"string" => MyApp.Mutator.String}
 
   The built-in language adapters (`"elixir"`, `"erlang"`) and mutators
-  (`"arithmetic"`, `"comparison"`, `"boolean"`, `"literal"`,
-  `"function_call"`, `"conditional"`) are always available. Entries in the
-  compile-time maps override built-in entries with the same key.
+  are always available (auto-discovered from the `:muex` application).
+  Entries in the compile-time maps are merged in and override
+  auto-discovered entries with the same key.
 
   ## CLI Options
 
@@ -119,7 +123,12 @@ defmodule Muex.Config do
                optimize_level: :string,
                min_complexity: :integer,
                max_per_function: :integer
-  @doc "Parses a list of CLI argument strings into a `%Config{}`.\n\nReturns `{:ok, config}` or `{:error, reason}`.\n"
+
+  @doc """
+  Parses a list of CLI argument strings into a `%Config{}`.
+
+  Returns `{:ok, config}` or `{:error, reason}`.
+  """
   @spec from_args([String.t()]) :: {:ok, t()} | {:error, String.t()}
   def from_args(args) do
     case OptionParser.parse(args, strict: @option_spec) do
@@ -131,7 +140,12 @@ defmodule Muex.Config do
     end
   end
 
-  @doc "Builds a `%Config{}` from a keyword list (already parsed by OptionParser or\nassembled programmatically).\n\nReturns `{:ok, config}` or `{:error, reason}`.\n"
+  @doc """
+  Builds a `%Config{}` from a keyword list (already parsed by OptionParser or
+  assembled programmatically).
+
+  Returns `{:ok, config}` or `{:error, reason}`.
+  """
   @spec from_opts(keyword()) :: {:ok, t()} | {:error, String.t()}
   def from_opts(opts) do
     app = Keyword.get(opts, :app)
@@ -165,7 +179,9 @@ defmodule Muex.Config do
     end
   end
 
-  @doc "Returns optimizer options derived from the config's optimization settings.\n"
+  @doc """
+  Returns optimizer options derived from the config's optimization settings.
+  """
   @spec optimizer_opts(t()) :: keyword()
   def optimizer_opts(%__MODULE__{} = config) do
     base =
@@ -212,19 +228,38 @@ defmodule Muex.Config do
     end
   end
 
-  @doc "Resolves `test_paths` entries into actual test file paths on disk.\n\nEach entry in `test_paths` is treated as follows:\n  - Directory → expands to `dir/**/*_test.exs`\n  - Glob pattern (contains `*` or `?`) → expanded via `Path.wildcard/1`\n  - Regular file → taken literally\n"
+  @doc """
+  Resolves `test_paths` entries into actual test file paths on disk.
+
+  Each entry in `test_paths` is treated as follows:
+    - Directory -> expands to `dir/**/*_test.exs`
+    - Glob pattern (contains `*` or `?`) -> expanded via `Path.wildcard/1`
+    - Regular file -> taken literally
+  """
   @spec resolve_test_files(t()) :: [Path.t()]
   def resolve_test_files(%__MODULE__{test_paths: paths}) do
     expand_test_paths(paths)
   end
 
-  @doc "Expands a list of test path entries into actual file paths on disk.\n\nEach entry is treated as follows:\n  - Directory -> expands to `dir/**/*_test.exs`\n  - Glob pattern (contains `*` or `?`) -> expanded via `Path.wildcard/1`\n  - Regular file -> taken literally\n  - Other -> attempted as a wildcard pattern\n"
+  @doc """
+  Expands a list of test path entries into actual file paths on disk.
+
+  Each entry is treated as follows:
+    - Directory -> expands to `dir/**/*_test.exs`
+    - Glob pattern (contains `*` or `?`) -> expanded via `Path.wildcard/1`
+    - Regular file -> taken literally
+    - Other -> attempted as a wildcard pattern
+  """
   @spec expand_test_paths([String.t()]) :: [Path.t()]
   def expand_test_paths(paths) when is_list(paths) do
     paths |> Enum.flat_map(&expand_test_path/1) |> Enum.uniq()
   end
 
-  @doc "Expands a single test path entry into matching file paths.\n\nHandles directories, glob patterns, regular files, and fallback wildcard.\n"
+  @doc """
+  Expands a single test path entry into matching file paths.
+
+  Handles directories, glob patterns, regular files, and fallback wildcard.
+  """
   @spec expand_test_path(String.t()) :: [Path.t()]
   def expand_test_path(path) do
     cond do
@@ -267,8 +302,13 @@ defmodule Muex.Config do
     end
   end
 
-  defp parse_mutator_paths(nil) do
-    []
+  defp parse_mutator_paths(nil), do: []
+
+  defp parse_mutator_paths(raw) do
+    raw
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
   end
 
   @language_map %{
@@ -276,6 +316,7 @@ defmodule Muex.Config do
                   "erlang" => Muex.Language.Erlang
                 }
                 |> Map.merge(Application.compile_env(:muex, :languages, %{}))
+
   defp resolve_language(name) do
     with module <-
            Map.get_lazy(@language_map, name, fn ->
@@ -286,12 +327,15 @@ defmodule Muex.Config do
          else: (_ -> {:error, "Unknown language: #{name}"})
   end
 
+  @compile_env_mutators Application.compile_env(:muex, :mutators, %{})
+
   @doc false
   def all_mutators(extra_paths \\ [], language \\ Muex.Language.Elixir) do
     builtin = discover_mutators(:muex)
+    compile_env = Map.values(@compile_env_mutators)
     external = load_external_mutators(extra_paths)
 
-    (builtin ++ external)
+    (builtin ++ compile_env ++ external)
     |> Enum.uniq()
     |> Enum.filter(fn mod -> language in mod.supported_languages() end)
     |> Enum.sort_by(&Module.split/1)

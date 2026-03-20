@@ -12,21 +12,22 @@ defmodule Muex.Mutator.ReturnValue do
   `MatchError` / `FunctionClauseError` crashes that would mask real
   mutation-testing signal:
 
-    - `{:ok, _}`  → `{:error, :mutated}`
-    - `{:error, _}` → `{:ok, :mutated}`
-    - `:ok` → `:error`
-    - `:error` → `:ok`
-    - `true` → `false`
-    - `false` → `true`
-    - integer → `0`
-    - float → `0.0`
-    - string → `""`
-    - list → `[]`
-    - map/struct → `%{}`
-    - tuple → `{}`
-    - everything else → `nil`
+    - `{:ok, _}`  -> `{:error, :mutated}`
+    - `{:error, _}` -> `{:ok, :mutated}`
+    - `:ok` -> `:error`
+    - `:error` -> `:ok`
+    - `true` -> `false`
+    - `false` -> `true`
+    - integer -> `0`
+    - float -> `0.0`
+    - string -> `""`
+    - list -> `[]`
+    - map/struct -> `%{}`
+    - tuple -> `{}`
+    - everything else -> `nil`
 
-  Skips functions whose return expression already matches the zero value.
+  When the return expression already matches the inferred zero value,
+  falls back to `nil` to ensure the mutation is still observable.
 
   Complements StatementDeletion: that mutator tests whether intermediate
   statements matter, this one tests whether the return value matters.

@@ -8,7 +8,8 @@ defmodule Muex.Mutator.FunctionCall do
   """
   @behaviour Muex.Mutator
 
-  @commutative_ops [:+, :*, :==, :!=, :===, :!==, :and, :or, :&&, :||, :when]
+  @commutative_ops [:+, :*, :==, :!=, :===, :!==]
+
   @impl true
   def name do
     "FunctionCall"

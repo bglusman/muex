@@ -22,11 +22,13 @@ defmodule Muex.Mutator.StatementDeletion do
   def supported_languages, do: [Muex.Language.Elixir, Muex.Language.Erlang]
 
   @impl true
-  def mutate({:__block__, meta, statements}, context) when length(statements) >= 2 do
+  def mutate({:__block__, meta, [_, _ | _] = statements}, context) do
+    last_index = length(statements) - 1
+
     statements
     |> Enum.with_index()
-    # Skip the last statement — that's the return value
-    |> Enum.reject(fn {_stmt, idx} -> idx == length(statements) - 1 end)
+    # Skip the last statement -- that's the return value
+    |> Enum.reject(fn {_stmt, idx} -> idx == last_index end)
     |> Enum.map(fn {stmt, idx} ->
       remaining = List.delete_at(statements, idx)
       mutated_ast = simplify_block(meta, remaining)
@@ -34,7 +36,7 @@ defmodule Muex.Mutator.StatementDeletion do
 
       build_mutation(
         mutated_ast,
-        "delete statement #{idx + 1} of #{length(statements)}",
+        "delete statement #{idx + 1} of #{last_index + 1}",
         context,
         stmt_line
       )
