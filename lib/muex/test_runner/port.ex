@@ -116,15 +116,14 @@ defmodule Muex.TestRunner.Port do
   # Detect whether mix test output indicates a compilation error rather than
   # a test failure. When a mutation breaks compilation, mix test exits non-zero
   # but never runs any tests — these should be classified as :invalid, not :killed.
+  #
+  # The key signal is: non-zero exit with no ExUnit summary in the output.
+  # We also check for Elixir exception patterns (CompileError, SyntaxError,
+  # TokenMissingError, etc.) to avoid false positives from other non-test crashes.
+  @compile_error_pattern ~r/\*\* \(\w*(?:Error|Missing\w*)\)/
   defp compile_error?(output) do
     not has_exunit_summary?(output) and
-      (String.contains?(output, "** (CompileError)") or
-         String.contains?(output, "is not loaded and could not be found") or
-         String.contains?(output, "cannot compile module") or
-         String.contains?(output, "undefined function") or
-         String.contains?(output, "undefined variable") or
-         String.contains?(output, "invalid argument for alias") or
-         String.contains?(output, "cannot expand struct"))
+      Regex.match?(@compile_error_pattern, output)
   end
 
   defp has_exunit_summary?(output) do
