@@ -3,7 +3,7 @@ defmodule Muex.TestRunner.PortTest do
 
   alias Muex.TestRunner.Port, as: PortRunner
 
-  describe "run_tests/3" do
+  describe "run_tests/2" do
     test "returns error for non-existent test files" do
       result = PortRunner.run_tests(["nonexistent_test.exs"], nil, timeout_ms: 10_000)
 

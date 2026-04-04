@@ -349,4 +349,3 @@ See the `examples/` directory for example projects:
 ## Documentation
 
 Documentation can be found at <https://hexdocs.pm/muex>.
-
