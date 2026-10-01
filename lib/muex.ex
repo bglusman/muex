@@ -181,6 +181,7 @@ defmodule Muex do
         max_workers: config.concurrency,
         timeout_ms: config.timeout_ms,
         verbose: config.verbose,
+        partition_workers: config.partition_workers,
         test_paths: config.test_paths
       )
 

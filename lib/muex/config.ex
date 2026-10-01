@@ -56,6 +56,9 @@ defmodule Muex.Config do
     * `--min-score` - Minimum file complexity score for inclusion (default: 20)
     * `--max-mutations` - Cap total mutations tested; 0 = unlimited (default: 0)
     * `--no-filter` - Disable intelligent file filtering
+    * `--partition-workers` - Export `MIX_TEST_PARTITION=<worker number>` (1..N) to each
+      sandboxed `mix test`, so a project whose test database name uses that variable
+      gives every concurrent worker its own database (default: off)
     * `--verbose` - Show detailed progress information
     * `--optimize` / `--no-optimize` - Enable/disable mutation optimization (default: enabled)
     * `--optimize-level` - Preset: `conservative`, `balanced`, `aggressive` (default: `balanced`)
@@ -77,6 +80,7 @@ defmodule Muex.Config do
           max_mutations: non_neg_integer(),
           filter: boolean(),
           verbose: boolean(),
+          partition_workers: boolean(),
           optimize: boolean(),
           optimize_level: String.t(),
           min_complexity: non_neg_integer() | nil,
@@ -97,6 +101,7 @@ defmodule Muex.Config do
     max_mutations: 0,
     filter: true,
     verbose: false,
+    partition_workers: false,
     optimize: true,
     optimize_level: "balanced",
     min_complexity: nil,
@@ -118,6 +123,7 @@ defmodule Muex.Config do
                max_mutations: :integer,
                no_filter: :boolean,
                verbose: :boolean,
+               partition_workers: :boolean,
                optimize: :boolean,
                no_optimize: :boolean,
                optimize_level: :string,
@@ -169,6 +175,7 @@ defmodule Muex.Config do
         max_mutations: Keyword.get(opts, :max_mutations, 0),
         filter: not Keyword.get(opts, :no_filter, false),
         verbose: Keyword.get(opts, :verbose, false),
+        partition_workers: Keyword.get(opts, :partition_workers, false),
         optimize: resolve_optimize(opts),
         optimize_level: optimize_level,
         min_complexity: Keyword.get(opts, :min_complexity),

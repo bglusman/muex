@@ -178,5 +178,33 @@ defmodule Muex.TestRunner.PortTest do
       assert {:ok, %{failures: 1}} =
                PortRunner.run_tests(["test/raise_test.exs"], cd: dir, timeout_ms: 60_000)
     end
+
+    test "exports the partition as MIX_TEST_PARTITION, replacing an inherited value", %{dir: dir} do
+      File.write!(Path.join(dir, "test/partition_test.exs"), """
+      defmodule PartitionTest do
+        use ExUnit.Case
+        test "sees its worker number", do: assert(System.get_env("MIX_TEST_PARTITION") == "3")
+      end
+      """)
+
+      previous = System.get_env("MIX_TEST_PARTITION")
+      System.put_env("MIX_TEST_PARTITION", "9")
+
+      try do
+        assert {:ok, %{failures: 0}} =
+                 PortRunner.run_tests(["test/partition_test.exs"],
+                   cd: dir,
+                   timeout_ms: 60_000,
+                   partition: 3
+                 )
+
+        assert {:ok, %{failures: 1}} =
+                 PortRunner.run_tests(["test/partition_test.exs"], cd: dir, timeout_ms: 60_000)
+      after
+        if previous,
+          do: System.put_env("MIX_TEST_PARTITION", previous),
+          else: System.delete_env("MIX_TEST_PARTITION")
+      end
+    end
   end
 end

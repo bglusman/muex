@@ -25,9 +25,10 @@ defmodule Muex.Sandbox do
   """
 
   @type sandbox :: %{
-          root: Path.t(),
-          project_root: Path.t(),
-          build_env: String.t()
+          required(:root) => Path.t(),
+          required(:project_root) => Path.t(),
+          required(:build_env) => String.t(),
+          optional(:index) => pos_integer()
         }
 
   @doc """
@@ -50,7 +51,7 @@ defmodule Muex.Sandbox do
 
     for i <- 1..count do
       root = Path.join(base_dir, "worker_#{i}")
-      create_sandbox(root, project_root, build_env, test_paths)
+      root |> create_sandbox(project_root, build_env, test_paths) |> Map.put(:index, i)
     end
   end
 

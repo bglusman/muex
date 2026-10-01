@@ -437,7 +437,8 @@ defmodule Muex.WorkerPool do
                   PortRunner.run_tests(test_files,
                     timeout_ms: timeout_ms,
                     cd: sandbox.root,
-                    no_compile: precompiled
+                    no_compile: precompiled,
+                    partition: partition_for(sandbox, state.opts)
                   )
 
                 classify_test_result(test_result)
@@ -466,6 +467,10 @@ defmodule Muex.WorkerPool do
     e -> %{mutation: mutation, result: :timeout, duration_ms: 0, error: e}
   catch
     :exit, reason -> %{mutation: mutation, result: :timeout, duration_ms: 0, error: reason}
+  end
+
+  defp partition_for(sandbox, opts) do
+    if Keyword.get(opts, :partition_workers, false), do: Map.get(sandbox, :index)
   end
 
   defp classify_test_result({:ok, %{failures: 0}}), do: :survived

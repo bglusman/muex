@@ -89,6 +89,18 @@ defmodule Muex.SandboxTest do
     end
   end
 
+  describe "create_pool/2 worker index" do
+    test "numbers the sandboxes from 1 so a worker can pick its own test database" do
+      sandboxes = Sandbox.create_pool(3, project_root: @project_root, test_paths: ["test"])
+
+      try do
+        assert Enum.map(sandboxes, & &1.index) == [1, 2, 3]
+      after
+        Sandbox.cleanup(sandboxes)
+      end
+    end
+  end
+
   describe "create_pool/2" do
     test "creates the requested number of sandboxes" do
       sandboxes = Sandbox.create_pool(3, project_root: @project_root, test_paths: ["test"])

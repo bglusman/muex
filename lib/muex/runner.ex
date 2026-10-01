@@ -30,6 +30,8 @@ defmodule Muex.Runner do
       - `:timeout_ms` - Test timeout in milliseconds (default: 5000)
       - `:test_paths` - List of test path patterns (default: ["test"])
       - `:verbose` - Show progress (default: false)
+      - `:partition_workers` - Export `MIX_TEST_PARTITION=<worker number>` to each sandboxed
+        `mix test` (default: false)
 
   ## Returns
 

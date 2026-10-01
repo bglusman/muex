@@ -25,6 +25,8 @@ defmodule Muex.TestRunner.Port do
     - `opts` - Options:
       - `:timeout_ms` - Test timeout in milliseconds (default: 5000)
       - `:mix_env` - Mix environment (default: "test")
+      - `:partition` - When set, exported to the port as `MIX_TEST_PARTITION` so the
+        project can give each concurrent worker its own database (default: unset)
       - `:cd` - Working directory for the port process (default: current dir).
         When running inside a sandbox, this should be the sandbox root.
 
@@ -38,6 +40,7 @@ defmodule Muex.TestRunner.Port do
     mix_env = Keyword.get(opts, :mix_env, "test")
     cd = Keyword.get(opts, :cd)
     no_compile = Keyword.get(opts, :no_compile, false)
+    partition = Keyword.get(opts, :partition)
     start_time = System.monotonic_time(:millisecond)
 
     # When running from a sandbox, test paths are relative and resolve
@@ -45,7 +48,7 @@ defmodule Muex.TestRunner.Port do
     # the caller's cwd — that would bypass sandbox isolation.
     resolved_files = test_files
 
-    case spawn_test_port(resolved_files, mix_env, timeout_ms, cd, no_compile) do
+    case spawn_test_port(resolved_files, mix_env, timeout_ms, cd, no_compile, partition) do
       {:ok, output, exit_code} ->
         duration_ms = System.monotonic_time(:millisecond) - start_time
 
@@ -63,7 +66,7 @@ defmodule Muex.TestRunner.Port do
     end
   end
 
-  defp spawn_test_port(test_files, mix_env, timeout_ms, cd, no_compile) do
+  defp spawn_test_port(test_files, mix_env, timeout_ms, cd, no_compile, partition) do
     # When the caller pre-compiled the mutated module and wrote the .beam
     # directly, we pass --no-compile to skip Mix's compilation phase entirely.
     # We also always pass --no-deps-check and --no-archives-check since deps
@@ -82,8 +85,12 @@ defmodule Muex.TestRunner.Port do
       |> Enum.map(fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)
 
     env =
-      Enum.reject(current_env, fn {k, _v} -> k == ~c"MIX_ENV" end) ++
-        [{~c"MIX_ENV", String.to_charlist(mix_env)}]
+      current_env
+      |> Enum.reject(fn {k, _v} ->
+        k == ~c"MIX_ENV" or (partition != nil and k == ~c"MIX_TEST_PARTITION")
+      end)
+      |> Kernel.++([{~c"MIX_ENV", String.to_charlist(mix_env)}])
+      |> Kernel.++(partition_env(partition))
 
     cmd_args = Enum.map(args, &String.to_charlist/1)
 
@@ -101,6 +108,11 @@ defmodule Muex.TestRunner.Port do
       kind, reason -> {:error, {kind, reason}}
     end
   end
+
+  defp partition_env(nil), do: []
+
+  defp partition_env(partition),
+    do: [{~c"MIX_TEST_PARTITION", String.to_charlist("#{partition}")}]
 
   defp maybe_add_cd(port_opts, nil), do: port_opts
   defp maybe_add_cd(port_opts, cd), do: [{:cd, String.to_charlist(cd)} | port_opts]

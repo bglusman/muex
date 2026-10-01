@@ -12,6 +12,7 @@ defmodule Muex.ConfigTest do
       assert config.language == Muex.Language.Elixir
       assert config.filter == true
       assert config.verbose == false
+      assert config.partition_workers == false
       assert config.optimize == true
       assert config.optimize_level == "balanced"
       assert config.format == "terminal"
@@ -27,6 +28,11 @@ defmodule Muex.ConfigTest do
       assert Muex.Mutator.PipelineDeletion in config.mutators
       assert Muex.Mutator.GuardSimplification in config.mutators
       assert length(config.mutators) == 10
+    end
+
+    test "--partition-workers is off by default and switchable" do
+      assert {:ok, %{partition_workers: false}} = Config.from_args([])
+      assert {:ok, %{partition_workers: true}} = Config.from_args(["--partition-workers"])
     end
 
     test "parses --files flag" do
