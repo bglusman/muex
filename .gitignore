@@ -28,4 +28,5 @@ muex-report.*
 /.elixir_ls/
 /.erl.history/
 
-/.dialyzer/
+/.dialyzer/*
+!/.dialyzer/ignore.exs
