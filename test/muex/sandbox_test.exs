@@ -241,4 +241,32 @@ defmodule Muex.SandboxTest do
              )
     end
   end
+
+  describe "apply_mutation/4 after a mutant that does not compile" do
+    test "the next mutant finds the module's beam again" do
+      root =
+        Path.join(System.tmp_dir!(), "muex_test_sandbox_#{System.unique_integer([:positive])}")
+
+      sandbox = Sandbox.create_sandbox(root, @project_root, "test", ["test"])
+      on_exit(fn -> File.rm_rf!(root) end)
+
+      app = to_string(Mix.Project.config()[:app])
+      beam = Path.join([sandbox.root, "_build", "test", "lib", app, "ebin", "Elixir.Muex.beam"])
+      good = File.read!("lib/muex.ex")
+
+      assert {:ok, false} =
+               Sandbox.apply_mutation(
+                 sandbox,
+                 "lib/muex.ex",
+                 "defmodule Muex do\n  def x(, do: 1\nend",
+                 Muex
+               )
+
+      refute File.exists?(beam)
+
+      Sandbox.restore(sandbox, "lib/muex.ex")
+      assert {:ok, true} = Sandbox.apply_mutation(sandbox, "lib/muex.ex", good, Muex)
+      assert File.exists?(beam)
+    end
+  end
 end

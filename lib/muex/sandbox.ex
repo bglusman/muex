@@ -112,6 +112,10 @@ defmodule Muex.Sandbox do
     # so this sandbox can recompile independently.
     ensure_build_copy_for_file(sandbox, original_path)
 
+    # The previous mutant may have deleted this module's beam (when it failed to
+    # pre-compile); put the original back so this run starts from a complete build.
+    if module_name, do: restore_beams(sandbox, module_name)
+
     # Remove the symlink and write the mutated source as a real file
     File.rm(sandbox_path)
 
@@ -352,6 +356,27 @@ defmodule Muex.Sandbox do
     else
       File.mkdir_p!(Path.join([root, "_build", build_env, "lib"]))
     end
+  end
+
+  defp restore_beams(sandbox, module_name) do
+    build = Path.join([sandbox.project_root, "_build", sandbox.build_env])
+
+    [build, "**", "#{module_name}.beam"]
+    |> Path.join()
+    |> Path.wildcard()
+    |> then(
+      &private_build_paths(
+        sandbox,
+        Enum.map(&1, fn path ->
+          Path.join(sandbox.root, Path.relative_to(path, sandbox.project_root))
+        end)
+      )
+    )
+    |> Enum.each(fn target ->
+      source = Path.join(sandbox.project_root, Path.relative_to(target, sandbox.root))
+      File.mkdir_p!(Path.dirname(target))
+      File.cp!(source, target)
+    end)
   end
 
   # Beam files are only rewritten or removed when they live in a build directory the sandbox
