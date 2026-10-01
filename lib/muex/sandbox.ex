@@ -120,7 +120,7 @@ defmodule Muex.Sandbox do
         precompiled =
           if module_name do
             beam_pattern = Path.join([sandbox.root, "_build", "**", "#{module_name}.beam"])
-            beam_paths = Path.wildcard(beam_pattern)
+            beam_paths = sandbox |> private_build_paths(Path.wildcard(beam_pattern))
 
             # Try to pre-compile the mutated module and write the .beam directly,
             # so the child `mix test` process finds an up-to-date beam and skips
@@ -354,6 +354,24 @@ defmodule Muex.Sandbox do
     end
   end
 
+  # Beam files are only rewritten or removed when they live in a build directory the sandbox
+  # owns. A `_build/<env>/lib/<app>` still symlinked to the real project would otherwise
+  # have the real beams overwritten by a mutant, or deleted when a mutant fails to compile.
+  defp private_build_paths(sandbox, paths) do
+    Enum.filter(paths, fn path ->
+      case Path.relative_to(path, sandbox.root) |> Path.split() do
+        ["_build", env, "lib", app | _] ->
+          match?(
+            {:error, _},
+            File.read_link(Path.join([sandbox.root, "_build", env, "lib", app]))
+          )
+
+        _ ->
+          false
+      end
+    end)
+  end
+
   defp ensure_app_mirrored_for_file(sandbox, file_path) do
     case extract_app_name_from_path(file_path) do
       nil -> :ok
@@ -400,10 +418,18 @@ defmodule Muex.Sandbox do
   end
 
   defp detect_app_from_build do
-    # For non-umbrella projects, find the app name from _build
-    case Path.wildcard("_build/test/lib/*/.mix/compile.elixir") do
-      [path | _] -> path |> Path.split() |> Enum.at(3)
-      [] -> nil
+    # A single-app project's own app name. (Globbing `_build/*/lib/*/.mix/compile.elixir`
+    # picks whichever dependency sorts first, leaving the project's own build symlinked
+    # to the real `_build`, which mutated beams would then overwrite.)
+    case Mix.Project.config()[:app] do
+      app when is_atom(app) and not is_nil(app) ->
+        Atom.to_string(app)
+
+      _ ->
+        case Path.wildcard("_build/test/lib/*/.mix/compile.elixir") do
+          [path | _] -> path |> Path.split() |> Enum.at(3)
+          [] -> nil
+        end
     end
   end
 

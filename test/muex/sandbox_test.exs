@@ -190,4 +190,55 @@ defmodule Muex.SandboxTest do
       refute File.exists?(Path.join(root, "test/b_test.exs"))
     end
   end
+
+  describe "apply_mutation/4 on a single-app project" do
+    setup do
+      root =
+        Path.join(System.tmp_dir!(), "muex_test_sandbox_#{System.unique_integer([:positive])}")
+
+      sandbox = Sandbox.create_sandbox(root, @project_root, "test", ["test"])
+      on_exit(fn -> File.rm_rf!(root) end)
+      %{sandbox: sandbox}
+    end
+
+    test "copies the project's own build, never a dependency's, and leaves the real beam alone",
+         %{sandbox: sandbox} do
+      app = to_string(Mix.Project.config()[:app])
+
+      real_beam =
+        Path.join([@project_root, "_build", "test", "lib", app, "ebin", "Elixir.Muex.beam"])
+
+      before = File.read!(real_beam)
+
+      source = File.read!("lib/muex.ex") <> "\n"
+      assert {:ok, _precompiled} = Sandbox.apply_mutation(sandbox, "lib/muex.ex", source, Muex)
+
+      sandbox_app_build = Path.join([sandbox.root, "_build", "test", "lib", app])
+      assert {:error, _} = File.read_link(sandbox_app_build)
+      assert File.read!(real_beam) == before
+    end
+
+    test "never deletes the real beam when the mutant does not compile", %{sandbox: sandbox} do
+      app = to_string(Mix.Project.config()[:app])
+
+      real_beam =
+        Path.join([@project_root, "_build", "test", "lib", app, "ebin", "Elixir.Muex.beam"])
+
+      before = File.read!(real_beam)
+
+      assert {:ok, false} =
+               Sandbox.apply_mutation(
+                 sandbox,
+                 "lib/muex.ex",
+                 "defmodule Muex do\n  def x(, do: 1\nend",
+                 Muex
+               )
+
+      assert File.read!(real_beam) == before
+
+      refute File.exists?(
+               Path.join([sandbox.root, "_build", "test", "lib", app, "ebin", "Elixir.Muex.beam"])
+             )
+    end
+  end
 end
