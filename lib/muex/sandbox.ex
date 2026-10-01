@@ -77,7 +77,7 @@ defmodule Muex.Sandbox do
     end
 
     # Symlink test directories (for explicit --test-paths)
-    link_test_paths(root, project_root, test_paths)
+    link_test_paths(root, project_root, test_paths ++ harness_paths(test_paths))
 
     # Symlink deps/ (shared, read-only)
     safe_symlink(Path.join(project_root, "deps"), Path.join(root, "deps"))
@@ -271,6 +271,27 @@ defmodule Muex.Sandbox do
       end)
 
       File.mkdir_p!(target_dir)
+    end
+  end
+
+  # `mix test <files>` still needs the suite's own `test_helper.exs` and `test/support`,
+  # which `--test-paths` rarely names. Link them from each path's `test` directory.
+  @doc false
+  @spec harness_paths([String.t()]) :: [String.t()]
+  def harness_paths(test_paths) do
+    test_paths
+    |> Enum.map(&test_root/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Enum.flat_map(&[Path.join(&1, "test_helper.exs"), Path.join(&1, "support")])
+  end
+
+  defp test_root(path) do
+    segments = path |> Path.split() |> Enum.reject(&(&1 in [".", ""]))
+
+    case Enum.find_index(segments, &(&1 == "test")) do
+      nil -> nil
+      index -> segments |> Enum.take(index + 1) |> Path.join()
     end
   end
 

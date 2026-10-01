@@ -68,4 +68,23 @@ defmodule Muex.DependencyAnalyzerTest do
       assert result == ["test/my_module_test.exs"]
     end
   end
+
+  describe "analyze/1 with dynamic aliases" do
+    test "skips `alias __MODULE__.Child` instead of crashing" do
+      dir = Path.join(System.tmp_dir!(), "muex_dep_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      File.write!(Path.join(dir, "thing_test.exs"), """
+      defmodule ThingTest do
+        use ExUnit.Case
+        alias __MODULE__.Child
+        alias Enum, as: E
+        test "x", do: E.count([])
+      end
+      """)
+
+      assert %{Enum => [_]} = DependencyAnalyzer.analyze(dir)
+    end
+  end
 end

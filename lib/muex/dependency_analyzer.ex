@@ -116,23 +116,23 @@ defmodule Muex.DependencyAnalyzer do
     case node do
       # alias MyModule
       {:alias, _, [{:__aliases__, _, parts}]} ->
-        MapSet.new([module_from_parts(parts)])
+        module_set(parts)
 
       # alias MyModule.SubModule
       {:alias, _, [{:__aliases__, _, parts}, _opts]} ->
-        MapSet.new([module_from_parts(parts)])
+        module_set(parts)
 
       # import MyModule
       {:import, _, [{:__aliases__, _, parts}]} ->
-        MapSet.new([module_from_parts(parts)])
+        module_set(parts)
 
       # import MyModule, only: [...]
       {:import, _, [{:__aliases__, _, parts}, _opts]} ->
-        MapSet.new([module_from_parts(parts)])
+        module_set(parts)
 
       # MyModule.function()
       {{:., _, [{:__aliases__, _, parts}, _function]}, _, _args} ->
-        MapSet.new([module_from_parts(parts)])
+        module_set(parts)
 
       # describe "MyModule" - extract from string if it looks like a module
       {:describe, _, [module_string, _block]} when is_binary(module_string) ->
@@ -163,11 +163,22 @@ defmodule Muex.DependencyAnalyzer do
     end
   end
 
+  defp module_set(parts) do
+    case module_from_parts(parts) do
+      nil -> MapSet.new()
+      module -> MapSet.new([module])
+    end
+  end
+
   # Convert alias parts to module atom
+  # Parts that are not plain atoms (`alias __MODULE__.Child`) cannot be resolved
+  # statically; they yield no module.
   defp module_from_parts(parts) do
-    parts
-    |> Enum.map_join(".", &to_string/1)
-    |> then(&("Elixir." <> &1))
-    |> String.to_atom()
+    if Enum.all?(parts, &is_atom/1) do
+      parts
+      |> Enum.map_join(".", &to_string/1)
+      |> then(&("Elixir." <> &1))
+      |> String.to_atom()
+    end
   end
 end

@@ -163,26 +163,46 @@ defmodule Muex.TestRunner.Port do
       Regex.match?(@compile_error_pattern, output)
   end
 
-  defp has_exunit_summary?(output) do
-    Regex.match?(~r/\d+ tests?, \d+ failures?/, output) or
-      String.contains?(output, "0 failures")
+  defp has_exunit_summary?(output), do: parse_failures(output) != :none
+
+  # Elixir 1.20 replaced "N tests, M failures" with "Result: P passed" (all passed)
+  # or "Result: P/T passed" followed by "Failed: 8 tests, 1 property".
+  @ansi ~r/\e\[[0-9;]*m/
+  @legacy_summary ~r/\d+ (?:tests?|doctests?|properties|property)[^\n]*?, (\d+) failures?/
+  @result_line ~r/^Result: (?:(\d+)\/(\d+)|(\d+)) passed|^Result: 0 tests/m
+
+  @doc false
+  # Returns the number of failures an ExUnit run reported, or :none when the output
+  # holds no recognizable summary (the run crashed or never started).
+  @spec parse_failures(String.t()) :: {:ok, non_neg_integer()} | :none
+  def parse_failures(output) do
+    output = Regex.replace(@ansi, output, "")
+
+    case {Regex.run(@result_line, output), Regex.run(@legacy_summary, output)} do
+      {[_, passed, total | _], _} when passed != "" ->
+        {:ok, String.to_integer(total) - String.to_integer(passed)}
+
+      {[_, "", "", _all_passed], _} ->
+        {:ok, 0}
+
+      {[_], _} ->
+        {:ok, 0}
+
+      {nil, [_, failures]} ->
+        {:ok, String.to_integer(failures)}
+
+      {nil, nil} ->
+        if String.contains?(output, "0 failures"), do: {:ok, 0}, else: :none
+    end
   end
 
-  defp count_failures(output, _exit_code) do
-    # Always try to parse the actual failure count from output for reporting
-    # accuracy. Fall back to 1 only when parsing fails (e.g. no recognizable
-    # ExUnit summary because something crashed).
-    case Regex.run(~r/(\d+) failures?/, output) do
-      [_, count] ->
-        String.to_integer(count)
-
-      nil ->
-        if String.contains?(output, "0 failures") do
-          0
-        else
-          # No ExUnit output at all — something crashed. Treat as killed.
-          1
-        end
+  # With no parsable summary, trust the exit code: a clean exit ran the suite and nothing failed
+  # (the mutant survived); a crash counts as one failure (killed).
+  defp count_failures(output, exit_code) do
+    case parse_failures(output) do
+      {:ok, failures} -> failures
+      :none when exit_code == 0 -> 0
+      :none -> 1
     end
   end
 end

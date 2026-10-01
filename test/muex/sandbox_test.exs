@@ -151,4 +151,43 @@ defmodule Muex.SandboxTest do
       assert File.read!(sb1_path) == original
     end
   end
+
+  describe "harness_paths/1" do
+    test "names the helper and support directory of each test root once" do
+      assert Sandbox.harness_paths(["test/foo_test.exs", "test/sub"]) == [
+               "test/test_helper.exs",
+               "test/support"
+             ]
+
+      assert Sandbox.harness_paths(["apps/a/test/x_test.exs"]) == [
+               "apps/a/test/test_helper.exs",
+               "apps/a/test/support"
+             ]
+
+      assert Sandbox.harness_paths(["spec/x.exs"]) == []
+    end
+  end
+
+  describe "create_sandbox/4 with a single test file" do
+    test "still links the test helper and support files" do
+      project = Path.join(System.tmp_dir!(), "muex_proj_#{System.unique_integer([:positive])}")
+      root = Path.join(System.tmp_dir!(), "muex_sb_#{System.unique_integer([:positive])}")
+      on_exit(fn -> File.rm_rf!(project) && File.rm_rf!(root) end)
+
+      File.mkdir_p!(Path.join(project, "lib"))
+      File.mkdir_p!(Path.join(project, "test/support"))
+      File.write!(Path.join(project, "mix.exs"), "")
+      File.write!(Path.join(project, "test/test_helper.exs"), "ExUnit.start()")
+      File.write!(Path.join(project, "test/support/case.ex"), "")
+      File.write!(Path.join(project, "test/a_test.exs"), "")
+      File.write!(Path.join(project, "test/b_test.exs"), "")
+
+      Sandbox.create_sandbox(root, project, "test", ["test/a_test.exs"])
+
+      assert File.exists?(Path.join(root, "test/a_test.exs"))
+      assert File.exists?(Path.join(root, "test/test_helper.exs"))
+      assert File.exists?(Path.join(root, "test/support/case.ex"))
+      refute File.exists?(Path.join(root, "test/b_test.exs"))
+    end
+  end
 end
