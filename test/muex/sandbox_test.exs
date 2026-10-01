@@ -265,8 +265,14 @@ defmodule Muex.SandboxTest do
       refute File.exists?(beam)
 
       Sandbox.restore(sandbox, "lib/muex.ex")
+      # A failed child compile empties the sandbox's app build; simulate it.
+      File.rm_rf!(Path.dirname(beam))
+
       assert {:ok, true} = Sandbox.apply_mutation(sandbox, "lib/muex.ex", good, Muex)
       assert File.exists?(beam)
+
+      real_ebin = Path.join([@project_root, "_build", "test", "lib", app, "ebin"])
+      assert length(File.ls!(Path.dirname(beam))) == length(File.ls!(real_ebin))
     end
   end
 end

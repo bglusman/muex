@@ -112,9 +112,10 @@ defmodule Muex.Sandbox do
     # so this sandbox can recompile independently.
     ensure_build_copy_for_file(sandbox, original_path)
 
-    # The previous mutant may have deleted this module's beam (when it failed to
-    # pre-compile); put the original back so this run starts from a complete build.
-    if module_name, do: restore_beams(sandbox, module_name)
+    # A mutant that could not be pre-compiled is compiled by the child `mix test`, and a
+    # failed compile leaves the sandbox's app build empty. Start from a fresh copy of the
+    # project's build whenever the previous mutant went that way.
+    refresh_build_if_dirty(sandbox, original_path)
 
     # Remove the symlink and write the mutated source as a real file
     File.rm(sandbox_path)
@@ -148,6 +149,7 @@ defmodule Muex.Sandbox do
             # process recompiles (original behavior).
             if not compiled do
               Enum.each(beam_paths, &File.rm/1)
+              File.write!(dirty_marker(sandbox), "")
             end
 
             compiled
@@ -358,25 +360,26 @@ defmodule Muex.Sandbox do
     end
   end
 
-  defp restore_beams(sandbox, module_name) do
-    build = Path.join([sandbox.project_root, "_build", sandbox.build_env])
+  defp dirty_marker(sandbox), do: Path.join(sandbox.root, ".muex_build_dirty")
 
-    [build, "**", "#{module_name}.beam"]
-    |> Path.join()
-    |> Path.wildcard()
-    |> then(
-      &private_build_paths(
-        sandbox,
-        Enum.map(&1, fn path ->
-          Path.join(sandbox.root, Path.relative_to(path, sandbox.project_root))
-        end)
-      )
-    )
-    |> Enum.each(fn target ->
-      source = Path.join(sandbox.project_root, Path.relative_to(target, sandbox.root))
-      File.mkdir_p!(Path.dirname(target))
-      File.cp!(source, target)
-    end)
+  defp refresh_build_if_dirty(sandbox, file_path) do
+    marker = dirty_marker(sandbox)
+    app_name = extract_app_name_from_path(file_path)
+
+    if app_name && File.exists?(marker) do
+      target = Path.join([sandbox.root, "_build", sandbox.build_env, "lib", app_name])
+      source = Path.join([sandbox.project_root, "_build", sandbox.build_env, "lib", app_name])
+
+      # Only a private copy may be replaced; a symlink here would point at the real build.
+      if match?({:error, _}, File.read_link(target)) do
+        File.rm_rf!(target)
+        deep_copy(source, target)
+      end
+
+      File.rm(marker)
+    end
+
+    :ok
   end
 
   # Beam files are only rewritten or removed when they live in a build directory the sandbox
